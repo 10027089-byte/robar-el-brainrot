@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#090d18" />
+    <meta
+      name="description"
+      content="Corre por la ruta, recoge criaturas cósmicas y protege tu base."
+    />
+    <title>Robar el Brainrot</title>
+    <script src="https://bloxity.io"></script>
+  </head>
+  <body>
+    <main class="game-shell">
+      <canvas id="game-canvas" aria-label="Mundo 3D de Robar el Brainrot"></canvas>
+
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Robar el Brainrot, inicio">
+          <span class="brand-mark">RB</span>
+          <span class="brand-copy">
+            <strong>ROBAR EL BRAINROT</strong>
+            <small>CAOS CÓSMICO · TEMPORADA 01</small>
+          </span>
+        </a>
+        <div class="top-actions">
+          <span class="status-pill"><i></i> SERVIDOR ESTABLE</span>
+          <button class="icon-button" id="sound-toggle" type="button" aria-label="Activar o silenciar sonidos">♫</button>
+        </div>
+      </header>
+
+      <section class="hud" aria-label="Estado de la partida">
+        <div class="stat-card money-card">
+          <span class="stat-label">SALDO</span>
+          <strong id="money-value">$0</strong>
+          <span class="stat-foot">créditos cósmicos</span>
+        </div>
+        <div class="stat-card bag-card">
+          <span class="stat-label">MOCHILA</span>
+          <strong id="bag-value">0 <small>/ 3</small></strong>
+          <span class="stat-foot" id="bag-detail">Vacía · vuelve a tu base</span>
+        </div>
+        <div class="mission-card">
+          <span class="mission-kicker">MISIÓN ACTUAL</span>
+          <strong id="mission-title">Encuentra una criatura</strong>
+          <span id="mission-detail">Sigue las plataformas luminosas</span>
+          <div class="mission-progress"><span id="mission-progress"></span></div>
+        </div>
+      </section>
+
+      <div class="world-label label-base" aria-hidden="true"><span>⌂</span> TU BASE</div>
+      <div class="world-label label-vault" aria-hidden="true"><span>✦</span> ZONA DE HALLAZGOS</div>
+
+      <aside class="event-feed" aria-live="polite">
+        <div class="feed-heading"><span></span> TRANSMISIONES</div>
+        <div id="feed-messages"></div>
+      </aside>
+
+      <section class="shop-panel" aria-label="Tienda de mejoras">
+        <div class="shop-heading">
+          <div>
+            <span class="panel-eyebrow">PUESTO DE MEJORAS</span>
+            <strong>Prepara tu expedición</strong>
+          </div>
+          <span class="shop-currency">✦ <span id="shop-money">$0</span></span>
+        </div>
+        <div class="upgrade-list">
+          <button class="upgrade-card" data-upgrade="speed" type="button">
+            <span class="upgrade-icon speed-icon">↗</span>
+            <span class="upgrade-copy"><strong>Impulso</strong><small>Más velocidad</small></span>
+            <span class="upgrade-cost">$35</span>
+          </button>
+          <button class="upgrade-card" data-upgrade="jump" type="button">
+            <span class="upgrade-icon jump-icon">↑</span>
+            <span class="upgrade-copy"><strong>Salto lunar</strong><small>Más altura</small></span>
+            <span class="upgrade-cost">$45</span>
+          </button>
+          <button class="upgrade-card" data-upgrade="capacity" type="button">
+            <span class="upgrade-icon bag-icon">◇</span>
+            <span class="upgrade-copy"><strong>Mochila XL</strong><small>+1 espacio</small></span>
+            <span class="upgrade-cost">$60</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="shield-card" aria-label="Escudo de la base">
+        <div class="shield-icon">⌬</div>
+        <div class="shield-copy">
+          <span class="panel-eyebrow">DEFENSA DE BASE</span>
+          <strong id="shield-state">Escudo listo</strong>
+          <span id="shield-timer">Protege tus créditos de los saqueadores</span>
+          <div class="shield-meter"><span id="shield-meter"></span></div>
+        </div>
+        <button id="shield-button" class="shield-button" type="button">ACTIVAR <kbd>Q</kbd></button>
+      </section>
+
+      <div class="interaction-prompt" id="interaction-prompt" role="status">
+        <kbd>E</kbd><span>Interactuar</span>
+      </div>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+      <footer class="controls-hint">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> MOVER</span>
+        <span><kbd>ESPACIO</kbd> SALTAR</span>
+        <span><kbd>E</kbd> RECOGER / DEPOSITAR</span>
+      </footer>
+
+      <div class="mobile-controls" aria-label="Controles táctiles">
+        <div class="dpad">
+          <button data-key="KeyW" class="dpad-up" aria-label="Avanzar">▲</button>
+          <button data-key="KeyA" class="dpad-left" aria-label="Mover a la izquierda">◀</button>
+          <button data-key="KeyS" class="dpad-down" aria-label="Retroceder">▼</button>
+          <button data-key="KeyD" class="dpad-right" aria-label="Mover a la derecha">▶</button>
+        </div>
+        <div class="mobile-actions">
+          <button id="mobile-interact" class="mobile-action interact-action" aria-label="Interactuar">E</button>
+          <button id="mobile-jump" class="mobile-action jump-action" aria-label="Saltar">↑</button>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
