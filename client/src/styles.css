@@ -70,7 +70,6 @@ button {
     radial-gradient(ellipse at 52% 50%, transparent 38%, rgba(6, 9, 18, 0.45));
 }
 
-.topbar,
 .hud,
 .event-feed,
 .shop-panel,
@@ -84,40 +83,6 @@ button {
   z-index: 2;
 }
 
-.topbar {
-  top: max(20px, env(safe-area-inset-top));
-  left: 28px;
-  right: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: inherit;
-  text-decoration: none;
-}
-
-.brand-mark {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border: 1px solid rgba(84, 243, 208, 0.52);
-  border-radius: 14px;
-  color: var(--cyan);
-  background: rgba(13, 30, 43, 0.76);
-  box-shadow: inset 0 0 18px rgba(84, 243, 208, 0.12), 0 0 22px rgba(84, 243, 208, 0.11);
-  font-family: "DM Mono", monospace;
-  font-size: 15px;
-  font-weight: 500;
-  letter-spacing: -2px;
-}
-
-.brand-copy,
 .stat-card,
 .mission-card,
 .shop-heading,
@@ -127,27 +92,6 @@ button {
   flex-direction: column;
 }
 
-.brand-copy strong {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-}
-
-.brand-copy small {
-  margin-top: 3px;
-  color: var(--muted);
-  font-family: "DM Mono", monospace;
-  font-size: 8px;
-  letter-spacing: 0.11em;
-}
-
-.top-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.status-pill,
 .shop-currency {
   display: inline-flex;
   align-items: center;
@@ -162,7 +106,6 @@ button {
   letter-spacing: 0.06em;
 }
 
-.status-pill i,
 .feed-heading span {
   width: 6px;
   height: 6px;
@@ -171,26 +114,29 @@ button {
   box-shadow: 0 0 10px var(--cyan);
 }
 
-.icon-button {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: rgba(11, 16, 29, 0.64);
-  cursor: pointer;
-}
-
-.icon-button.is-muted {
-  color: var(--muted);
-  opacity: 0.65;
-}
-
 .hud {
-  top: 88px;
-  left: 28px;
+  top: max(76px, calc(env(safe-area-inset-top) + 60px));
+  left: 20px;
   display: flex;
   align-items: stretch;
   gap: 10px;
+}
+
+.player-identity {
+  position: fixed;
+  top: max(76px, calc(env(safe-area-inset-top) + 60px));
+  right: 20px;
+  max-width: 180px;
+  overflow: hidden;
+  color: #aab4ca;
+  font-family: "DM Mono", monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-identity:empty {
+  display: none;
 }
 
 .stat-card,
@@ -722,29 +668,17 @@ kbd {
 }
 
 @media (max-width: 760px) {
-  .topbar {
-    top: max(13px, env(safe-area-inset-top));
-    left: 14px;
+  .player-identity {
+    top: max(68px, calc(env(safe-area-inset-top) + 54px));
     right: 14px;
   }
 
-  .brand-mark {
-    width: 36px;
-    height: 36px;
-  }
-
-  .brand-copy strong {
-    font-size: 9px;
-  }
-
-  .brand-copy small,
-  .status-pill,
   .controls-hint {
     display: none;
   }
 
   .hud {
-    top: 62px;
+    top: max(68px, calc(env(safe-area-inset-top) + 54px));
     left: 14px;
     gap: 6px;
   }

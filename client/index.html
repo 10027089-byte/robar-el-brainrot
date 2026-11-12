@@ -9,27 +9,14 @@
       content="Corre por la ruta, recoge criaturas cósmicas y protege tu base."
     />
     <title>Robar el Brainrot</title>
-    <script src="https://bloxity.io"></script>
+    <script src="https://sdk.bloxity.io/v1/legion-sdk.min.js"></script>
   </head>
   <body>
     <main class="game-shell">
       <canvas id="game-canvas" aria-label="Mundo 3D de Robar el Brainrot"></canvas>
 
-      <header class="topbar">
-        <a class="brand" href="#" aria-label="Robar el Brainrot, inicio">
-          <span class="brand-mark">RB</span>
-          <span class="brand-copy">
-            <strong>ROBAR EL BRAINROT</strong>
-            <small>CAOS CÓSMICO · TEMPORADA 01</small>
-          </span>
-        </a>
-        <div class="top-actions">
-          <span class="status-pill"><i></i> SERVIDOR ESTABLE</span>
-          <button class="icon-button" id="sound-toggle" type="button" aria-label="Activar o silenciar sonidos">♫</button>
-        </div>
-      </header>
-
       <section class="hud" aria-label="Estado de la partida">
+        <span id="player-identity" class="player-identity" aria-label="Jugador"></span>
         <div class="stat-card money-card">
           <span class="stat-label">SALDO</span>
           <strong id="money-value">$0</strong>

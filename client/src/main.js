@@ -1,8 +1,12 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import { GameAudio } from "./audio.js";
 import "./styles.css";
 
 const GAME_SLUG = "robar-el-brainrot";
 const canvas = document.querySelector("#game-canvas");
+const playerIdentity = document.querySelector("#player-identity");
 const moneyValue = document.querySelector("#money-value");
 const shopMoney = document.querySelector("#shop-money");
 const bagValue = document.querySelector("#bag-value");
@@ -17,9 +21,12 @@ const shieldButton = document.querySelector("#shield-button");
 const prompt = document.querySelector("#interaction-prompt");
 const toast = document.querySelector("#toast");
 const feedMessages = document.querySelector("#feed-messages");
+const audio = new GameAudio();
+const avatarLoader = new GLTFLoader();
+const accessoryLoader = new OBJLoader();
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -32,6 +39,22 @@ scene.fog = new THREE.FogExp2("#10172a", 0.012);
 
 const camera = new THREE.PerspectiveCamera(47, 1, 0.1, 180);
 camera.position.set(-11, 12, 18);
+let cameraSensitivity = 1;
+let cameraYaw = 0;
+let cameraPitch = 0;
+let cameraDrag = null;
+let boxityEnvironment = null;
+let boxitySdk = null;
+let avatarRig = null;
+let avatarDressHandle = null;
+let activeCharacter = null;
+let activeOutfitKey = null;
+let avatarReady = false;
+let emoteCatalog = new Map();
+let activeEmote = null;
+let adBreakActive = false;
+let gameplayReported = false;
+const sdkUnsubscribers = [];
 
 const hemiLight = new THREE.HemisphereLight("#b5d8ff", "#111324", 2.2);
 scene.add(hemiLight);
@@ -83,8 +106,7 @@ const worldState = {
   nextRaidAt: 35,
   lastInteraction: 0,
   toastUntil: 0,
-  shopOpen: true,
-  soundOn: true,
+  paused: false,
   closestLoot: null,
   nearBase: false,
 };
@@ -104,8 +126,11 @@ const lootSpecs = [
   { x: 25, z: 0, y: 1, name: "Píxel Gelatinoso", value: 55, color: "#ff759d", shape: "pixel" },
 ];
 
-const avatar = createAvatar();
+const avatar = new THREE.Group();
+const fallbackAvatar = createAvatar();
+avatar.add(fallbackAvatar);
 scene.add(avatar);
+const followAccessories = [];
 const carriedModels = [];
 const laserShield = createLaserShield();
 scene.add(laserShield);
@@ -121,20 +146,376 @@ updateHud();
 addFeed("Tu base está lista. ¡Sal a explorar!", false);
 
 async function boot() {
-  await Legion.SDK.init({ gameSlug: GAME_SLUG });
-  Legion.SDK.game.loadingEnd();
-  Legion.SDK.game.gameplayStart();
+  try {
+    if (!window.Legion?.SDK) throw new Error("No se cargó el SDK de Boxity.");
+    boxitySdk = window.Legion.SDK;
+    await boxitySdk.init({ gameSlug: GAME_SLUG });
+    configureBoxity();
+
+    boxitySdk.game.loadingStep("Preparando tu avatar...");
+    try {
+      await refreshBoxityAvatar();
+    } catch (error) {
+      console.error("No se pudo cargar el avatar de Boxity:", error);
+    }
+    boxitySdk.game.loadingStep("Cargando emotes...");
+    try {
+      await loadEmoteCatalog();
+    } catch (error) {
+      console.error("No se pudo cargar el catálogo de emotes:", error);
+    }
+    renderer.render(scene, camera);
+    boxitySdk.game.loadingEnd();
+    boxitySdk.game.gameplayStart();
+    gameplayReported = true;
+  } catch (error) {
+    console.error("No se pudo iniciar la integración de Boxity:", error);
+    showToast("No se pudo conectar con Boxity; el juego continuará sin sus funciones.");
+    boxitySdk?.game?.loadingEnd?.();
+  }
+
   worldState.startAt = performance.now() / 1000;
   worldState.nextRaidAt = 35;
   addFeed("Expedición iniciada. Recoge hallazgos y vuelve a tu base.", false);
   renderer.setAnimationLoop(animate);
 }
 
-boot().catch((error) => {
-  console.error("No se pudo iniciar Robar el Brainrot:", error);
-  showToast("No se pudo conectar con el SDK del juego.");
-  document.querySelector(".status-pill").innerHTML = "<i></i> ERROR DE CONEXIÓN";
-});
+function configureBoxity() {
+  boxityEnvironment = boxitySdk.environment();
+  if (!boxityEnvironment?.apiUrl || !boxityEnvironment?.staticUrl) {
+    throw new Error("Boxity no proporcionó su entorno de plataforma.");
+  }
+  boxitySdk.game.registerFeature("emotes");
+  boxitySdk.ads.declareScreens({ gameplay: {} });
+  boxitySdk.leaderboard.define([
+    {
+      id: "brainrots-stolen",
+      label: "Brainrots robados",
+      order: "desc",
+      mode: "sum",
+      format: "number",
+      reset: "none",
+    },
+  ]);
+  boxitySdk.ads.onBreakStart(() => {
+    adBreakActive = true;
+    worldState.paused = true;
+    keys.clear();
+    audio.setMuted(true);
+  });
+  boxitySdk.ads.onBreakEnd(() => {
+    adBreakActive = false;
+    worldState.paused = false;
+    audio.setMuted(false);
+  });
+
+  const unsubscribeUser = boxitySdk.auth.onUserChanged((user) => {
+    const identity = user ?? boxitySdk.auth.getGuest?.();
+    playerIdentity.textContent = identity?.displayName || identity?.username || (typeof identity === "string" ? identity : "");
+    if (avatarReady) refreshBoxityAvatar().catch((error) => console.error("No se pudo actualizar el avatar:", error));
+  });
+  sdkUnsubscribers.push(unsubscribeUser);
+
+  sdkUnsubscribers.push(boxitySdk.player.onEvent((event) => {
+    if (event === "respawn_request") resetPlayerToSpawn();
+  }));
+  sdkUnsubscribers.push(boxitySdk.player.onEvent((event, data) => {
+    if (event === "play_emote") playEmote(data);
+  }));
+  sdkUnsubscribers.push(boxitySdk.avatar.onAvatarChanged(() => {
+    refreshBoxityAvatar().catch((error) => console.error("No se pudo actualizar el avatar:", error));
+  }));
+  sdkUnsubscribers.push(boxitySdk.avatar.onProportionsChanged(() => {
+    activeOutfitKey = null;
+    refreshBoxityAvatar().catch((error) => console.error("No se pudieron actualizar las proporciones:", error));
+  }));
+  if (typeof boxitySdk.onEnvironmentChanged === "function") {
+    sdkUnsubscribers.push(boxitySdk.onEnvironmentChanged((environment) => {
+      boxityEnvironment = environment;
+      loadEmoteCatalog().catch((error) => console.error("No se pudo actualizar el catálogo de emotes:", error));
+      refreshBoxityAvatar().catch((error) => console.error("No se pudo actualizar el avatar:", error));
+    }));
+  }
+
+  boxitySdk.settings.listen("master_volume", (value) => audio.setMasterVolume(Number(value) / 100));
+  boxitySdk.settings.listen("music_volume", (value) => audio.setMusicVolume(Number(value) / 100));
+  boxitySdk.settings.listen("graphics_quality", applyGraphicsQuality);
+  boxitySdk.settings.listen("camera_sensitivity", (value) => {
+    cameraSensitivity = THREE.MathUtils.clamp(Number(value) || 1, 0.1, 5);
+  });
+  boxitySdk.settings.triggerAll();
+  boxitySdk.ads.screen("gameplay");
+
+  window.addEventListener("pagehide", stopGameplay, { once: true });
+}
+
+function applyGraphicsQuality(value) {
+  const quality = {
+    Low: { pixelRatio: 0.8, shadows: false, fog: 0.009, far: 120 },
+    Medium: { pixelRatio: 1, shadows: true, fog: 0.011, far: 150 },
+    High: { pixelRatio: 1.5, shadows: true, fog: 0.012, far: 180 },
+    Ultra: { pixelRatio: 2, shadows: true, fog: 0.014, far: 220 },
+  }[value] ?? { pixelRatio: 1.5, shadows: true, fog: 0.012, far: 180 };
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelRatio));
+  renderer.shadowMap.enabled = quality.shadows;
+  moonLight.castShadow = quality.shadows;
+  scene.fog.density = quality.fog;
+  camera.far = quality.far;
+  camera.updateProjectionMatrix();
+  resize();
+}
+
+function stopGameplay() {
+  if (!gameplayReported || !boxitySdk?.game) return;
+  gameplayReported = false;
+  if (typeof boxitySdk.game.gameplayStop === "function") {
+    boxitySdk.game.gameplayStop();
+  } else {
+    boxitySdk.game.gameplayEnd();
+  }
+  boxitySdk.ads.hideScreen();
+  for (const unsubscribe of sdkUnsubscribers.splice(0)) {
+    if (typeof unsubscribe === "function") unsubscribe();
+  }
+}
+
+function platformUrl(baseUrl, path) {
+  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
+async function refreshBoxityAvatar() {
+  if (!boxitySdk || !boxityEnvironment) return;
+  const avatarApi = boxitySdk.avatar;
+  const equipped = avatarApi.getEquipped();
+  const outfitKey = avatarApi.getOutfitKey();
+  const characterId = equipped.characterId;
+  const hasCustomCharacter = characterId && !["-1", "undefined", "null"].includes(String(characterId));
+  const loadVersion = (refreshBoxityAvatar.version ?? 0) + 1;
+  refreshBoxityAvatar.version = loadVersion;
+
+  if (!hasCustomCharacter && avatarRig && !activeCharacter && avatarDressHandle && outfitKey !== activeOutfitKey) {
+    await avatarDressHandle.update(outfitKey);
+    if (loadVersion === refreshBoxityAvatar.version) activeOutfitKey = outfitKey;
+    return;
+  }
+
+  const character = hasCustomCharacter ? await avatarApi.getCharacterFor(equipped) : null;
+  const modelUrl = character?.glbUrl || platformUrl(boxityEnvironment.staticUrl, "avatars/player.glb");
+  const gltf = await avatarLoader.loadAsync(modelUrl);
+  if (loadVersion !== refreshBoxityAvatar.version) return;
+
+  const nextRig = gltf.scene;
+  const proportions = hasCustomCharacter ? null : avatarApi.getProportions();
+  const height = proportions?.height ?? 1;
+  nextRig.scale.set(0.25, 0.25 * height, 0.25);
+  nextRig.updateMatrixWorld(true);
+  for (const { object } of followAccessories) {
+    scene.remove(object);
+    disposeObject(object);
+  }
+  followAccessories.length = 0;
+  if (avatarRig) avatar.remove(avatarRig);
+  avatarRig = nextRig;
+  avatar.add(avatarRig);
+  avatar.updateMatrixWorld(true);
+  avatarRig.updateMatrixWorld(true);
+  fallbackAvatar.visible = false;
+  activeCharacter = character;
+  activeOutfitKey = outfitKey;
+  avatarDressHandle = null;
+
+  if (character) {
+    await applyCustomCharacterAccessories(avatarRig, equipped, character);
+  } else {
+    const characterKit = boxitySdk.character;
+    if (typeof characterKit?.canDress === "function" && characterKit.canDress(outfitKey)) {
+      avatarDressHandle = await characterKit.dress({
+        THREE,
+        GLTFLoader,
+        root: avatarRig,
+        outfitKey,
+      });
+    }
+    if (!avatarDressHandle) await applyFallbackAvatarAppearance(avatarRig, equipped);
+  }
+  avatarReady = true;
+}
+
+async function applyFallbackAvatarAppearance(root, equipped) {
+  const avatarApi = boxitySdk.avatar;
+  const skinTextureUrl = avatarApi.getSkinTextureUrlFor(equipped);
+  if (skinTextureUrl) {
+    const skinTexture = await new THREE.TextureLoader().loadAsync(skinTextureUrl);
+    skinTexture.colorSpace = THREE.SRGBColorSpace;
+    root.traverse((object) => {
+      if (!object.isSkinnedMesh || !object.material) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        material.map = skinTexture;
+        material.needsUpdate = true;
+      }
+    });
+  }
+
+  const slots = [
+    { field: "hatId", bone: "Neck1", origin: [0, 0.8, 0] },
+    { field: "backId", bone: "Spine2", origin: [0, 0, 0] },
+    ...avatarApi.getAccessorySlots(),
+  ];
+  await Promise.all(slots.map((slot) => attachAvatarAccessory(root, equipped, slot)));
+}
+
+async function applyCustomCharacterAccessories(root, equipped, character) {
+  const avatarApi = boxitySdk.avatar;
+  const slots = [
+    { field: "hatId", bone: "Neck1", origin: [0, 5.6, 0] },
+    { field: "backId", bone: "Spine2", origin: [0, 4.2, 0] },
+    ...avatarApi.getAccessorySlots().map((slot) => (
+      ["hairId", "maskId"].includes(slot.field) ? { ...slot, origin: [0, 5.6, 0] } : slot
+    )),
+  ];
+  await Promise.all(slots.map((slot) => attachAvatarAccessory(root, equipped, slot, character)));
+}
+
+async function attachAvatarAccessory(root, equipped, slot, character = null) {
+  const id = equipped[slot.field];
+  if (!id || ["-1", "undefined", "null"].includes(String(id))) return;
+  const urls = boxitySdk.avatar.getAccessoryUrls(slot.field, id);
+  if (!urls?.mesh) return;
+
+  try {
+    const [object, texture] = await Promise.all([
+      accessoryLoader.loadAsync(urls.mesh),
+      urls.texture ? new THREE.TextureLoader().loadAsync(urls.texture) : Promise.resolve(null),
+    ]);
+    if (texture) texture.colorSpace = THREE.SRGBColorSpace;
+    object.traverse((child) => {
+      if (!child.isMesh) return;
+      child.material = new THREE.MeshStandardMaterial({
+        map: texture,
+        metalness: 0.05,
+        roughness: 0.72,
+      });
+      child.castShadow = true;
+    });
+
+    const boneNames = [slot.bone, slot.mirrorBone].filter(Boolean);
+    for (const [index, boneName] of boneNames.entries()) {
+      const bone = root.getObjectByName(boneName);
+      if (!bone) continue;
+      const accessory = index === 0 ? object : object.clone(true);
+      const placement = new THREE.Matrix4().makeTranslation(...(slot.origin ?? [0, 0, 0]));
+      let localMatrix;
+      if (character) {
+        const characterMatrix = boxitySdk.avatar.characterAccessoryMatrix(character, boneName);
+        localMatrix = characterMatrix ? new THREE.Matrix4().fromArray(characterMatrix) : bone.matrixWorld.clone().invert().multiply(root.matrixWorld);
+      } else {
+        localMatrix = bone.matrixWorld.clone().invert().multiply(root.matrixWorld);
+      }
+      if (index > 0) localMatrix.multiply(new THREE.Matrix4().makeScale(-1, 1, 1));
+      localMatrix.multiply(placement);
+
+      if (slot.inheritScale === false) {
+        accessory.matrix.copy(localMatrix);
+        accessory.matrixAutoUpdate = false;
+        scene.add(accessory);
+        followAccessories.push({ object: accessory, bone, localMatrix });
+      } else {
+        accessory.matrix.copy(localMatrix);
+        accessory.matrixAutoUpdate = false;
+        bone.add(accessory);
+      }
+    }
+  } catch (error) {
+    console.error(`No se pudo cargar el accesorio ${slot.field}:`, error);
+  }
+}
+
+function updateFollowAccessories() {
+  for (const { object, bone, localMatrix } of followAccessories) {
+    const position = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld);
+    const rotation = new THREE.Quaternion().setFromRotationMatrix(bone.matrixWorld);
+    const transform = new THREE.Matrix4().compose(position, rotation, new THREE.Vector3(1, 1, 1));
+    object.matrix.copy(transform.multiply(localMatrix));
+  }
+}
+
+async function loadEmoteCatalog() {
+  const response = await fetch(platformUrl(boxityEnvironment.apiUrl, "v1/avatar/emotes"));
+  if (!response.ok) throw new Error(`El catálogo de emotes respondió ${response.status}.`);
+  const result = await response.json();
+  const emotes = Array.isArray(result) ? result : result.emotes ?? result.data ?? [];
+  emoteCatalog = new Map(emotes.map((emote) => [emote.id, emote.clip]).filter((entry) => entry[1]));
+}
+
+function playEmote(emoteId) {
+  const clip = emoteCatalog.get(emoteId);
+  if (!clip || !avatarRig) return;
+  stopEmote();
+  const bones = new Map();
+  avatarRig.traverse((object) => {
+    if (object.isBone) bones.set(object.name, object.quaternion.clone());
+  });
+  activeEmote = { clip, startedAt: performance.now() / 1000, bones };
+}
+
+function stopEmote() {
+  if (!activeEmote) return;
+  for (const [name, quaternion] of activeEmote.bones) {
+    const bone = avatarRig?.getObjectByName(name);
+    if (bone) bone.quaternion.copy(quaternion);
+  }
+  activeEmote = null;
+}
+
+function updateEmote(now) {
+  if (!activeEmote || !avatarRig) return;
+  const { clip, startedAt, bones } = activeEmote;
+  const length = Number(clip.len);
+  if (!(length > 0)) return stopEmote();
+  const elapsed = now - startedAt;
+  const time = clip.loop ? elapsed % length : Math.min(elapsed, length);
+  const blend = Math.min(1, elapsed / 0.1);
+
+  for (const [name, keysForBone] of Object.entries(clip.tracks ?? {})) {
+    const bone = avatarRig.getObjectByName(name);
+    const bind = bones.get(name);
+    if (!bone || !bind || !keysForBone.length) continue;
+
+    let left = keysForBone[0];
+    let right = left;
+    for (let index = 1; index < keysForBone.length; index += 1) {
+      if (time <= keysForBone[index][0]) {
+        right = keysForBone[index];
+        left = keysForBone[index - 1];
+        break;
+      }
+      left = keysForBone[index];
+      right = left;
+    }
+    const span = right[0] - left[0];
+    const rawProgress = span > 0 ? THREE.MathUtils.clamp((time - left[0]) / span, 0, 1) : 0;
+    const progress = rawProgress * rawProgress * (3 - 2 * rawProgress);
+    const radians = [1, 2, 3].map((index) => THREE.MathUtils.degToRad(left[index] + (right[index] - left[index]) * progress));
+    const delta = new THREE.Quaternion().setFromEuler(new THREE.Euler(...radians, "XYZ"));
+    const target = bind.clone().multiply(delta);
+    bone.quaternion.copy(bind).slerp(target, blend);
+  }
+  if (!clip.loop && elapsed >= length) stopEmote();
+}
+
+function resetPlayerToSpawn() {
+  keys.clear();
+  stopEmote();
+  player.x = 0;
+  player.y = 0;
+  player.z = 0;
+  player.vy = 0;
+  player.grounded = true;
+  avatar.position.set(0, 0, 0);
+  syncCarriedModels();
+  showToast("Volviste a tu base");
+}
 
 function createWorld() {
   const floor = new THREE.Mesh(
@@ -465,6 +846,13 @@ function bindControls() {
   window.addEventListener("keydown", (event) => {
     if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
     if (event.repeat) return;
+    audio.start().catch((error) => console.error("No se pudo iniciar el audio:", error));
+    if (event.code === "Escape") {
+      event.preventDefault();
+      keys.clear();
+      boxitySdk?.portal?.showMenu(true);
+      return;
+    }
     keys.add(event.code);
     if (event.code === "Space") jump();
     if (event.code === "KeyE") interact();
@@ -473,11 +861,34 @@ function bindControls() {
 
   window.addEventListener("keyup", (event) => keys.delete(event.code));
   window.addEventListener("blur", () => keys.clear());
+  canvas.addEventListener("pointerdown", (event) => {
+    audio.start().catch((error) => console.error("No se pudo iniciar el audio:", error));
+    cameraDrag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!cameraDrag || cameraDrag.pointerId !== event.pointerId) return;
+    cameraYaw += (event.clientX - cameraDrag.x) * 0.004 * cameraSensitivity;
+    cameraPitch = THREE.MathUtils.clamp(
+      cameraPitch + (event.clientY - cameraDrag.y) * 0.003 * cameraSensitivity,
+      -0.5,
+      0.7,
+    );
+    cameraDrag.x = event.clientX;
+    cameraDrag.y = event.clientY;
+  });
+  const endCameraDrag = () => {
+    cameraDrag = null;
+  };
+  canvas.addEventListener("pointerup", endCameraDrag);
+  canvas.addEventListener("pointercancel", endCameraDrag);
+  canvas.addEventListener("lostpointercapture", endCameraDrag);
 
   for (const button of document.querySelectorAll("[data-key]")) {
     const code = button.dataset.key;
     button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
+      audio.start().catch((error) => console.error("No se pudo iniciar el audio:", error));
       keys.add(code);
       button.setPointerCapture(event.pointerId);
     });
@@ -489,19 +900,15 @@ function bindControls() {
 
   document.querySelector("#mobile-jump").addEventListener("pointerdown", (event) => {
     event.preventDefault();
+    audio.start().catch((error) => console.error("No se pudo iniciar el audio:", error));
     jump();
   });
   document.querySelector("#mobile-interact").addEventListener("pointerdown", (event) => {
     event.preventDefault();
+    audio.start().catch((error) => console.error("No se pudo iniciar el audio:", error));
     interact();
   });
   shieldButton.addEventListener("click", activateShield);
-  document.querySelector("#sound-toggle").addEventListener("click", (event) => {
-    worldState.soundOn = !worldState.soundOn;
-    event.currentTarget.classList.toggle("is-muted", !worldState.soundOn);
-    event.currentTarget.setAttribute("aria-label", worldState.soundOn ? "Silenciar sonidos" : "Activar sonidos");
-    showToast(worldState.soundOn ? "Sonido activado" : "Sonido silenciado");
-  });
 
   for (const button of document.querySelectorAll("[data-upgrade]")) {
     button.addEventListener("click", () => purchaseUpgrade(button.dataset.upgrade));
@@ -519,9 +926,16 @@ function resize() {
 function animate() {
   const delta = Math.min(clock.getDelta(), 0.035);
   const now = performance.now() / 1000;
+  if (worldState.paused) {
+    renderer.render(scene, camera);
+    return;
+  }
   movePlayer(delta);
   animateLoot(now);
   animateAvatar(now);
+  updateEmote(now);
+  avatar.updateMatrixWorld(true);
+  updateFollowAccessories();
   updateShield(now);
   checkLootProximity(now);
   checkRaid(now);
@@ -541,6 +955,7 @@ function movePlayer(delta) {
 
   const moving = moveX !== 0 || moveZ !== 0;
   if (moving) {
+    stopEmote();
     const length = Math.hypot(moveX, moveZ);
     moveX /= length;
     moveZ /= length;
@@ -573,13 +988,9 @@ function movePlayer(delta) {
       const lost = player.carried.pop();
       addFeed(`Perdiste ${lost.name} al caer.`, true);
     }
-    player.x = 0;
-    player.z = 0;
-    player.y = 0;
-    player.vy = 0;
-    player.grounded = true;
-    syncCarriedModels();
+    resetPlayerToSpawn();
     showToast("Regresaste a tu base");
+    audio.playTone(180, 0.2, "triangle");
   }
 }
 
@@ -595,6 +1006,7 @@ function jump() {
   if (!player.grounded) return;
   player.vy = player.jump + player.upgradeJump;
   player.grounded = false;
+  audio.playTone(330, 0.1);
 }
 
 function interact() {
@@ -651,6 +1063,7 @@ function collectLoot(item) {
   updateMission();
   addFeed(`Recogiste ${item.name} · valor ${item.value} créditos.`, false);
   showToast(`${item.name} guardado`);
+  audio.playTone(660, 0.12);
 }
 
 function respawnLoot(item) {
@@ -665,12 +1078,23 @@ function depositLoot() {
   if (amount <= 0) return;
   player.cash += amount;
   const count = player.carried.length;
+  void submitLeaderboardScore(count);
   player.carried = [];
   syncCarriedModels();
   updateHud();
   updateMission();
   addFeed(`Vendiste ${count} hallazgo${count === 1 ? "" : "s"} por ${amount} créditos.`, false);
   showToast(`+${amount} créditos`);
+  audio.playTone(523.25, 0.18);
+}
+
+async function submitLeaderboardScore(count) {
+  try {
+    const result = await boxitySdk.leaderboard.submit("brainrots-stolen", count);
+    if (result?.results?.some((entry) => entry.improved)) showToast("¡Nuevo récord de brainrots!");
+  } catch (error) {
+    console.error("No se pudo enviar el resultado al leaderboard:", error);
+  }
 }
 
 function syncCarriedModels() {
@@ -815,7 +1239,10 @@ function animateAvatar(now) {
 }
 
 function updateCamera(delta) {
-  const target = new THREE.Vector3(player.x - 10.5, player.y + 9.5, player.z + 15);
+  const offset = new THREE.Vector3(-10.5, 9.5, 15);
+  offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
+  offset.y = Math.max(5, offset.y - cameraPitch * 10);
+  const target = new THREE.Vector3(player.x, player.y, player.z).add(offset);
   camera.position.lerp(target, 1 - Math.pow(0.001, delta));
   camera.lookAt(player.x + 3.5, player.y + 0.5, player.z);
 }
