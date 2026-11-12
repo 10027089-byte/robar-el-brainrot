@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#8bdcff" />
     <meta
       name="description"
-      content="Compra Brainrots en la pasarela, llena tu base y defiéndela de tus rivales."
+      content="Compra Brainrots en la pasarela, instala criaturas en tu base y recoge sus ganancias."
     />
     <title>Robar el Brainrot</title>
     <script src="https://sdk.bloxity.io/v1/legion-sdk.min.js"></script>
@@ -15,39 +15,32 @@
     <main class="game-shell">
       <canvas id="game-canvas" aria-label="Mundo 3D de Robar el Brainrot"></canvas>
 
-      <section class="hud" aria-label="Estado de la partida">
+      <section class="hud" aria-label="Dinero y ganancias">
         <span id="player-identity" class="player-identity" aria-label="Jugador"></span>
-        <div class="stat-card money-card">
-          <span class="stat-label">SALDO</span>
-          <strong id="money-value">$0</strong>
-          <span class="stat-foot">créditos cósmicos</span>
+        <div class="money-readout">
+          <div class="money-stat">
+            <span class="stat-label">DINERO</span>
+            <strong id="money-value">$250</strong>
+          </div>
+          <span class="hud-divider" aria-hidden="true"></span>
+          <div class="money-stat income-stat">
+            <span class="stat-label">GANANCIAS</span>
+            <strong id="income-value">$0 <small>/s</small></strong>
+          </div>
         </div>
-        <div class="stat-card bag-card">
-          <span class="stat-label">MOCHILA</span>
-          <strong id="bag-value">0 <small>/ 3</small></strong>
-          <span class="stat-foot" id="bag-detail">Vacía · vuelve a tu base</span>
-        </div>
-        <div class="mission-card">
-          <span class="mission-kicker">MISIÓN ACTUAL</span>
-          <strong id="mission-title">Encuentra una criatura</strong>
-          <span id="mission-detail">Sigue las plataformas luminosas</span>
-          <div class="mission-progress"><span id="mission-progress"></span></div>
-        </div>
+        <button id="shop-toggle" class="shop-toggle" type="button" aria-expanded="false" aria-controls="shop-panel">
+          <span aria-hidden="true">＋</span> Tienda
+        </button>
       </section>
 
       <div class="world-label label-base" aria-hidden="true"><span>⌂</span> TU BASE</div>
       <div class="world-label label-vault" aria-hidden="true"><span>★</span> PASARELA CENTRAL</div>
 
-      <aside class="event-feed" aria-live="polite">
-        <div class="feed-heading"><span></span> TRANSMISIONES</div>
-        <div id="feed-messages"></div>
-      </aside>
-
-      <section class="shop-panel" aria-label="Tienda de mejoras">
+      <section id="shop-panel" class="shop-panel" aria-label="Tienda" aria-hidden="true">
         <div class="shop-heading">
           <div>
-            <span class="panel-eyebrow">TALLER DEL PARQUE</span>
-            <strong>Mejora tu velocidad</strong>
+            <span class="panel-eyebrow">MEJORAS</span>
+            <strong>Tienda</strong>
           </div>
           <span class="shop-currency">✦ <span id="shop-money">$0</span></span>
         </div>
@@ -70,17 +63,6 @@
         </div>
       </section>
 
-      <section class="shield-card" aria-label="Escudo de la base">
-        <div class="shield-icon">⌬</div>
-        <div class="shield-copy">
-          <span class="panel-eyebrow">PUERTA DE SEGURIDAD</span>
-          <strong id="shield-state">Escudo listo</strong>
-          <span id="shield-timer">Protege tus pedestales de los ladrones</span>
-          <div class="shield-meter"><span id="shield-meter"></span></div>
-        </div>
-        <button id="shield-button" class="shield-button" type="button">ACTIVAR <kbd>Q</kbd></button>
-      </section>
-
       <div class="interaction-prompt" id="interaction-prompt" role="status">
         <kbd>E</kbd><span>Interactuar</span>
       </div>
@@ -90,8 +72,7 @@
       <footer class="controls-hint">
         <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> MOVER</span>
         <span><kbd>ESPACIO</kbd> SALTAR</span>
-        <span><kbd>E</kbd> COMPRAR / ROBAR / COBRAR</span>
-        <span><kbd>F</kbd> EMPUJAR</span>
+        <span><kbd>E</kbd> COMPRAR / RECOGER</span>
         <span>ARRASTRA PARA MIRAR</span>
       </footer>
 
@@ -105,7 +86,6 @@
         <div class="mobile-actions">
           <button id="mobile-interact" class="mobile-action interact-action" aria-label="Interactuar">E</button>
           <button id="mobile-jump" class="mobile-action jump-action" aria-label="Saltar">↑</button>
-          <button id="mobile-punch" class="mobile-action punch-action" aria-label="Empujar">F</button>
         </div>
       </div>
     </main>

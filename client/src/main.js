@@ -8,19 +8,12 @@ const GAME_SLUG = "robar-el-brainrot";
 const canvas = document.querySelector("#game-canvas");
 const playerIdentity = document.querySelector("#player-identity");
 const moneyValue = document.querySelector("#money-value");
+const incomeValue = document.querySelector("#income-value");
 const shopMoney = document.querySelector("#shop-money");
-const bagValue = document.querySelector("#bag-value");
-const bagDetail = document.querySelector("#bag-detail");
-const missionTitle = document.querySelector("#mission-title");
-const missionDetail = document.querySelector("#mission-detail");
-const missionProgress = document.querySelector("#mission-progress");
-const shieldState = document.querySelector("#shield-state");
-const shieldTimer = document.querySelector("#shield-timer");
-const shieldMeter = document.querySelector("#shield-meter");
-const shieldButton = document.querySelector("#shield-button");
 const prompt = document.querySelector("#interaction-prompt");
 const toast = document.querySelector("#toast");
-const feedMessages = document.querySelector("#feed-messages");
+const shopPanel = document.querySelector("#shop-panel");
+const shopToggle = document.querySelector("#shop-toggle");
 const audio = new GameAudio();
 const avatarLoader = new GLTFLoader();
 const accessoryLoader = new OBJLoader();
@@ -72,7 +65,6 @@ scene.add(moonLight);
 const platforms = [];
 const lootItems = [];
 const bases = [];
-const bots = [];
 const keys = new Set();
 const clock = new THREE.Clock();
 
@@ -92,16 +84,8 @@ const player = {
   upgrades: { speed: 0, jump: 0, capacity: 0 },
 };
 
-const shield = {
-  activeUntil: 0,
-  cooldownUntil: 0,
-  duration: 10,
-  cooldown: 22,
-};
-
 const worldState = {
   startAt: 0,
-  nextRaidAt: 12,
   lastInteraction: 0,
   toastUntil: 0,
   paused: false,
@@ -109,9 +93,6 @@ const worldState = {
   nearBase: false,
   nearestBase: null,
   homeBase: null,
-  currentAction: "idle",
-  laneDirection: 1,
-  lastPunchAt: 0,
 };
 
 const RARITIES = [
@@ -144,15 +125,16 @@ avatar.add(fallbackAvatar);
 scene.add(avatar);
 const followAccessories = [];
 const carriedModels = [];
-const laserShield = createLaserShield();
-scene.add(laserShield);
-laserShield.visible = false;
 
 bindControls();
 resize();
 window.addEventListener("resize", resize);
 updateHud();
-addFeed("Tu base está lista. ¡Sal a explorar!", false);
+shopToggle.addEventListener("click", () => {
+  const isOpen = shopPanel.classList.toggle("is-open");
+  shopToggle.setAttribute("aria-expanded", String(isOpen));
+  shopPanel.setAttribute("aria-hidden", String(!isOpen));
+});
 
 async function boot() {
   try {
@@ -184,9 +166,6 @@ async function boot() {
     boxitySdk?.game?.loadingEnd?.();
   }
 
-  worldState.startAt = performance.now() / 1000;
-  worldState.nextRaidAt = performance.now() / 1000 + 12;
-  addFeed("Expedición iniciada. Recoge hallazgos y vuelve a tu base.", false);
   renderer.setAnimationLoop(animate);
 }
 
@@ -769,66 +748,30 @@ function createCollectible(spec) {
 
 function createAvatar() {
   const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: "#5ce4cf", roughness: 0.56, metalness: 0.08 });
-  const suit = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 0.95, 12), bodyMaterial);
-  suit.position.y = 0.64;
-  suit.castShadow = true;
-  group.add(suit);
-
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.34, 20, 16),
-    new THREE.MeshStandardMaterial({ color: "#f1d8c6", roughness: 0.78 }),
-  );
-  head.position.y = 1.36;
-  head.castShadow = true;
-  group.add(head);
-
-  const visor = new THREE.Mesh(
-    new THREE.SphereGeometry(0.24, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
-    new THREE.MeshStandardMaterial({ color: "#8fffea", emissive: "#31cbb2", emissiveIntensity: 0.7, metalness: 0.38, roughness: 0.22 }),
-  );
-  visor.position.set(0, 1.43, 0.15);
-  visor.rotation.x = -0.22;
-  group.add(visor);
-
+  const suitMaterial = new THREE.MeshStandardMaterial({ color: "#59b879", roughness: 0.78 });
+  const skinMaterial = new THREE.MeshStandardMaterial({ color: "#f1d8c6", roughness: 0.85 });
+  const darkMaterial = new THREE.MeshStandardMaterial({ color: "#382e39", roughness: 0.7 });
+  const makePart = (size, position, material) => {
+    const part = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+    part.position.set(...position);
+    part.castShadow = true;
+    group.add(part);
+    return part;
+  };
+  makePart([0.72, 0.72, 0.42], [0, 0.84, 0], suitMaterial);
+  makePart([0.64, 0.62, 0.58], [0, 1.62, 0], skinMaterial);
   for (const side of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.34, 3, 8), bodyMaterial);
-    leg.position.set(side * 0.2, 0.2, 0);
-    group.add(leg);
+    makePart([0.11, 0.13, 0.07], [side * 0.16, 1.69, 0.31], darkMaterial);
+    makePart([0.24, 0.68, 0.25], [side * 0.48, 0.88, 0], skinMaterial);
+    makePart([0.25, 0.58, 0.28], [side * 0.2, 0.27, 0], suitMaterial);
+    makePart([0.32, 0.15, 0.39], [side * 0.2, 0.045, 0.05], darkMaterial);
+  }
+  makePart([0.3, 0.2, 0.1], [0, 1.38, 0.32], new THREE.MeshStandardMaterial({ color: "#f2ae54" }));
+  makePart([0.82, 0.15, 0.72], [0, 2.02, 0], new THREE.MeshStandardMaterial({ color: "#f2ae54" }));
+  for (const side of [-1, 1]) {
+    makePart([0.13, 0.15, 0.17], [side * 0.22, 2.1, 0], new THREE.MeshStandardMaterial({ color: "#fff1bd" }));
   }
 
-  const backpack = new THREE.Mesh(
-    new THREE.BoxGeometry(0.42, 0.48, 0.25),
-    new THREE.MeshStandardMaterial({ color: "#987cff", emissive: "#5e43c4", emissiveIntensity: 0.5, roughness: 0.38 }),
-  );
-  backpack.position.set(0, 0.74, -0.35);
-  group.add(backpack);
-
-  return group;
-}
-
-function createLaserShield() {
-  const group = new THREE.Group();
-  const material = new THREE.MeshBasicMaterial({ color: "#57ffe0", transparent: true, opacity: 0.56 });
-  const beams = [
-    { position: [0, 1.1, -4.7], size: [9.4, 1.8, 0.045] },
-    { position: [0, 1.1, 4.7], size: [9.4, 1.8, 0.045] },
-    { position: [-4.7, 1.1, 0], size: [0.045, 1.8, 9.4] },
-    { position: [4.7, 1.1, 0], size: [0.045, 1.8, 9.4] },
-  ];
-  for (const beam of beams) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...beam.size), material.clone());
-    mesh.position.set(...beam.position);
-    group.add(mesh);
-  }
-
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(4.65, 0.045, 8, 64),
-    new THREE.MeshBasicMaterial({ color: "#78ffea", transparent: true, opacity: 0.8 }),
-  );
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.12;
-  group.add(ring);
   return group;
 }
 
@@ -921,7 +864,6 @@ async function createWorld() {
       });
       bases.push(base);
       if (base.isPlayer) worldState.homeBase = base;
-      else bots.push(createBot(base, baseIndex));
       baseIndex += 1;
       await nextFrame();
     }
@@ -1046,66 +988,14 @@ function createBase(spec) {
   doorGroup.add(beam);
   group.add(doorGroup);
 
-  const label = createTextSprite(spec.isPlayer ? "TU BASE" : `BASE ${spec.id + 1}`, "#ffffff", spec.color);
+  const label = createTextSprite(spec.isPlayer ? "TU BASE" : "BASE LIBRE", "#ffffff", spec.color);
   label.position.set(0, 5.8, -4.7);
   label.scale.set(5.4, 1.25, 1);
   group.add(label);
 
   const platform = { minX: spec.x - 6, maxX: spec.x + 6, minZ: spec.z - 6, maxZ: spec.z + 6, y: 0 };
   platforms.push(platform);
-  const base = { ...spec, group, slots, bank, doorGroup, accrued: 0, shieldUntil: 0, platform, bot: null };
-  if (!spec.isPlayer) {
-    base.botModel = createBotModel(spec.color);
-    base.botModel.position.set(spec.side * -4.6, 0.38, 0);
-    group.add(base.botModel);
-  }
-  return base;
-}
-
-function createBot(base, index) {
-  const bot = {
-    id: index,
-    base,
-    x: base.x,
-    z: base.z,
-    speed: 2 + (index % 3) * 0.25,
-    nextAction: 8 + index * 2.2,
-    target: null,
-    mode: "idle",
-    cooldown: 0,
-  };
-  base.bot = bot;
-  return bot;
-}
-
-function createBotModel(color) {
-  const bot = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.42, 0.72, 3, 8),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.8 }),
-  );
-  body.position.y = 0.75;
-  body.castShadow = true;
-  bot.add(body);
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.43, 12, 10),
-    new THREE.MeshStandardMaterial({ color: "#ffdab5", roughness: 0.92 }),
-  );
-  head.position.y = 1.55;
-  bot.add(head);
-  const eyes = new THREE.MeshBasicMaterial({ color: "#3d382f" });
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), eyes);
-    eye.position.set(side * 0.14, 1.62, 0.37);
-    bot.add(eye);
-  }
-  const cap = new THREE.Mesh(
-    new THREE.SphereGeometry(0.46, 10, 7, 0, Math.PI * 2, 0, Math.PI / 2),
-    new THREE.MeshStandardMaterial({ color: "#fff0a8", roughness: 0.8 }),
-  );
-  cap.position.y = 1.8;
-  bot.add(cap);
-  return bot;
+  return { ...spec, group, slots, bank, doorGroup, accrued: 0, platform };
 }
 
 function createTextSprite(text, textColor = "#fff", background = "#785c47") {
@@ -1145,6 +1035,7 @@ function spawnConveyorBrainrot(z = -42) {
   const spec = {
     ...catalog,
     ...rarity,
+    bodyColor: catalog.color,
     value: rarity.price,
     rarity: rarity.name,
     x: (Math.random() - 0.5) * 0.65,
@@ -1184,72 +1075,127 @@ function chooseRarity() {
 
 function createBrainrotModel(spec) {
   const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.86 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.58, 12, 10), bodyMaterial);
-  body.scale.set(1.15, 0.9, 0.95);
-  if (["capybara", "panda", "cat", "turtle"].includes(spec.shape)) body.scale.set(1.25, 0.82, 0.9);
-  if (["duck", "chick"].includes(spec.shape)) body.scale.set(0.9, 1.05, 0.92);
-  if (spec.shape === "cactus") body.scale.set(0.65, 1.3, 0.65);
-  if (spec.shape === "llama" || spec.shape === "rabbit") body.scale.set(0.82, 1.25, 0.8);
-  body.position.y = 0.55;
-  body.castShadow = true;
-  group.add(body);
-  const eyeMaterial = new THREE.MeshBasicMaterial({ color: spec.shape === "panda" ? "#292929" : "#443b35" });
-  const appendageMaterial = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.9 });
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: spec.bodyColor ?? spec.color, roughness: 0.82 });
+  const accentMaterial = new THREE.MeshStandardMaterial({ color: "#fff1d2", roughness: 0.88 });
+  const darkMaterial = new THREE.MeshStandardMaterial({ color: "#392c38", roughness: 0.72 });
+  const trimMaterial = new THREE.MeshStandardMaterial({ color: "#f7c95f", roughness: 0.56, metalness: 0.08 });
+  const makeBlock = (parent, size, position, material, rotation = null) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+    mesh.position.set(...position);
+    if (rotation) mesh.rotation.set(...rotation);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  };
+
+  const torsoSize = spec.shape === "cactus" ? [0.66, 0.94, 0.48] : [0.82, 0.68, 0.56];
+  makeBlock(group, torsoSize, [0, 0.72, 0], bodyMaterial);
+  makeBlock(group, [0.86, 0.12, 0.59], [0, 0.37, 0], accentMaterial);
+
+  const head = new THREE.Group();
+  head.position.set(0, 1.47, 0);
+  group.add(head);
+  const headWidth = spec.shape === "llama" ? 0.58 : 0.76;
+  makeBlock(head, [headWidth, 0.68, 0.62], [0, 0.2, 0], bodyMaterial);
+
+  const eyeMaterial = spec.shape === "panda"
+    ? new THREE.MeshStandardMaterial({ color: "#29252b", roughness: 0.7 })
+    : darkMaterial;
   for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), eyeMaterial);
-    eye.position.set(side * 0.2, 0.78, 0.48);
-    group.add(eye);
-    const cheek = new THREE.Mesh(
-      new THREE.SphereGeometry(0.09, 8, 6),
-      new THREE.MeshStandardMaterial({ color: "#ffb0a5", roughness: 1 }),
-    );
-    cheek.position.set(side * 0.31, 0.55, 0.42);
-    group.add(cheek);
-    if (["cat", "rabbit", "duck", "chick", "panda", "axolotl"].includes(spec.shape)) {
-      const earHeight = spec.shape === "rabbit" ? 0.58 : 0.3;
-      const ear = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, earHeight, 3, 6), appendageMaterial);
-      ear.position.set(side * 0.34, spec.shape === "rabbit" ? 1.35 : 1.05, 0);
-      ear.rotation.z = side * -0.22;
-      group.add(ear);
+    const eyeX = side * headWidth * 0.25;
+    makeBlock(head, [0.18, 0.2, 0.08], [eyeX, 0.28, 0.35], accentMaterial);
+    makeBlock(head, [0.075, 0.12, 0.035], [eyeX, 0.28, 0.405], eyeMaterial);
+    makeBlock(head, [0.14, 0.07, 0.045], [side * 0.24, 0.02, 0.35], new THREE.MeshStandardMaterial({ color: "#f29b91" }));
+  }
+  makeBlock(head, [0.22, 0.055, 0.07], [0, -0.02, 0.36], darkMaterial);
+
+  const arms = [];
+  const legs = [];
+  for (const side of [-1, 1]) {
+    const arm = new THREE.Group();
+    arm.position.set(side * 0.51, 1.03, 0);
+    group.add(arm);
+    makeBlock(arm, [0.23, 0.58, 0.26], [0, -0.26, 0], bodyMaterial);
+    makeBlock(arm, [0.27, 0.19, 0.28], [0, -0.57, 0.02], accentMaterial);
+    arms.push(arm);
+
+    const leg = new THREE.Group();
+    leg.position.set(side * 0.22, 0.39, 0);
+    group.add(leg);
+    makeBlock(leg, [0.27, 0.48, 0.3], [0, -0.22, 0], bodyMaterial);
+    makeBlock(leg, [0.34, 0.16, 0.4], [0, -0.48, 0.07], accentMaterial);
+    legs.push(leg);
+
+    if (["cat", "rabbit", "panda", "llama"].includes(spec.shape)) {
+      const earHeight = spec.shape === "rabbit" || spec.shape === "llama" ? 0.38 : 0.2;
+      makeBlock(head, [0.2, earHeight, 0.18], [side * headWidth * 0.39, 0.2 + earHeight * 0.53, 0], bodyMaterial);
+      if (spec.shape === "cat") {
+        makeBlock(head, [0.1, 0.13, 0.04], [side * headWidth * 0.39, 0.2 + earHeight * 0.53, 0.105], accentMaterial);
+      }
+    } else if (spec.shape === "axolotl") {
+      for (let gill = 0; gill < 3; gill += 1) {
+        makeBlock(head, [0.22, 0.09, 0.1], [side * (0.42 + gill * 0.04), 0.16 - gill * 0.14, -0.02], accentMaterial);
+      }
     }
+
     if (spec.shape === "cactus") {
-      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.4, 3, 6), appendageMaterial);
-      arm.position.set(side * 0.56, 0.7, 0);
-      arm.rotation.z = side * 0.9;
-      group.add(arm);
+      makeBlock(group, [0.22, 0.55, 0.22], [side * 0.49, 0.93, 0], bodyMaterial, [0, 0, side * -0.22]);
     }
-    const foot = new THREE.Mesh(
-      new THREE.SphereGeometry(0.17, 8, 6),
-      new THREE.MeshStandardMaterial({ color: "#f2bf75", roughness: 0.9 }),
-    );
-    foot.scale.set(1.2, 0.55, 1.4);
-    foot.position.set(side * 0.3, 0.12, 0.2);
-    group.add(foot);
   }
-  const nose = new THREE.Mesh(
-    new THREE.SphereGeometry(0.085, 8, 6),
-    new THREE.MeshStandardMaterial({ color: "#ff8f78", roughness: 0.8 }),
-  );
-  nose.position.set(0, 0.62, 0.57);
-  group.add(nose);
-  const smile = new THREE.Mesh(
-    new THREE.TorusGeometry(0.12, 0.025, 5, 12, Math.PI),
-    new THREE.MeshStandardMaterial({ color: "#714c43", roughness: 0.9 }),
-  );
-  smile.position.set(0, 0.47, 0.53);
-  smile.rotation.z = Math.PI;
-  group.add(smile);
-  if (spec.shape === "turtle") {
-    const shell = new THREE.Mesh(
-      new THREE.SphereGeometry(0.56, 10, 8),
-      new THREE.MeshStandardMaterial({ color: "#367f57", roughness: 0.98 }),
-    );
-    shell.scale.set(1, 0.58, 1);
-    shell.position.set(0, 0.85, -0.16);
-    group.add(shell);
+
+  if (spec.shape === "duck" || spec.shape === "chick") {
+    makeBlock(head, [0.3, 0.15, 0.25], [0, 0.1, 0.43], trimMaterial);
+  } else if (spec.shape === "capybara") {
+    makeBlock(head, [0.3, 0.2, 0.24], [0, 0.02, 0.4], new THREE.MeshStandardMaterial({ color: "#8b593f" }));
+  } else if (spec.shape === "turtle") {
+    makeBlock(group, [0.88, 0.54, 0.42], [0, 0.87, -0.42], new THREE.MeshStandardMaterial({ color: "#367f57", roughness: 0.98 }));
+  } else if (spec.shape === "cactus") {
+    for (const side of [-1, 1]) {
+      makeBlock(head, [0.045, 0.12, 0.045], [side * 0.24, 0.05, 0.33], accentMaterial);
+    }
   }
+
+  if (["Raro", "Épico", "Legendario", "Mítico"].includes(spec.rarity)) {
+    const glassesMaterial = new THREE.MeshStandardMaterial({ color: "#4b5c78", metalness: 0.28, roughness: 0.32 });
+    makeBlock(head, [0.3, 0.11, 0.08], [-0.18, 0.29, 0.42], glassesMaterial);
+    makeBlock(head, [0.3, 0.11, 0.08], [0.18, 0.29, 0.42], glassesMaterial);
+    makeBlock(head, [0.16, 0.055, 0.07], [0, 0.29, 0.42], glassesMaterial);
+  }
+
+  if (["Épico", "Mítico"].includes(spec.rarity)) {
+    const wingMaterial = new THREE.MeshStandardMaterial({ color: spec.rarity === "Mítico" ? "#f8a6e2" : "#f4f1ff", roughness: 0.74 });
+    for (const side of [-1, 1]) {
+      for (let feather = 0; feather < 3; feather += 1) {
+        makeBlock(
+          group,
+          [0.28, 0.22, 0.16],
+          [side * (0.56 + feather * 0.13), 1.12 - feather * 0.18, -0.37],
+          wingMaterial,
+          [0, 0, side * -0.24],
+        );
+      }
+    }
+  }
+
+  if (["Legendario", "Mítico"].includes(spec.rarity)) {
+    makeBlock(head, [0.66, 0.13, 0.38], [0, 0.62, 0], trimMaterial);
+    for (const point of [-1, 0, 1]) {
+      makeBlock(head, [0.13, 0.23, 0.15], [point * 0.22, 0.78 + (point === 0 ? 0.12 : 0), 0], trimMaterial);
+    }
+  }
+
+  if (spec.rarity === "Mítico") {
+    const haloMaterial = new THREE.MeshStandardMaterial({ color: "#ffd86b", emissive: "#c78028", emissiveIntensity: 0.32, metalness: 0.42, roughness: 0.34 });
+    for (let segment = 0; segment < 8; segment += 1) {
+      const angle = (segment / 8) * Math.PI * 2;
+      makeBlock(head, [0.15, 0.13, 0.16], [Math.cos(angle) * 0.56, 1.02, Math.sin(angle) * 0.56], haloMaterial);
+    }
+  }
+
   group.userData.bobPhase = Math.random() * Math.PI * 2;
+  group.userData.arms = arms;
+  group.userData.legs = legs;
   return group;
 }
 
@@ -1261,14 +1207,15 @@ function bindControls() {
     if (event.code === "Escape") {
       event.preventDefault();
       keys.clear();
+      shopPanel.classList.remove("is-open");
+      shopToggle.setAttribute("aria-expanded", "false");
+      shopPanel.setAttribute("aria-hidden", "true");
       boxitySdk?.portal?.showMenu(true);
       return;
     }
     keys.add(event.code);
     if (event.code === "Space") jump();
     if (event.code === "KeyE") interact();
-    if (event.code === "KeyQ") activateShield();
-    if (event.code === "KeyF") punchNearestBot();
   });
 
   window.addEventListener("keyup", (event) => keys.delete(event.code));
@@ -1320,14 +1267,13 @@ function bindControls() {
     audio.start().catch((error) => console.error("No se pudo iniciar el audio:", error));
     interact();
   });
-  document.querySelector("#mobile-punch").addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    punchNearestBot();
-  });
-  shieldButton.addEventListener("click", activateShield);
-
   for (const button of document.querySelectorAll("[data-upgrade]")) {
-    button.addEventListener("click", () => purchaseUpgrade(button.dataset.upgrade));
+    button.addEventListener("click", () => {
+      purchaseUpgrade(button.dataset.upgrade);
+      shopPanel.classList.remove("is-open");
+      shopToggle.setAttribute("aria-expanded", "false");
+      shopPanel.setAttribute("aria-hidden", "true");
+    });
   }
 }
 
@@ -1348,14 +1294,12 @@ function animate() {
   }
   movePlayer(delta);
   animateLoot(now, delta);
-  updateIncome(delta, now);
-  checkRaid(now);
+  updateIncome(delta);
   animateAvatar(now);
   updateEmote(now);
   avatar.updateMatrixWorld(true);
   updateFollowAccessories();
-  updateShield(now);
-  checkLootProximity(now);
+  checkLootProximity();
   updateCamera(delta);
   updateLabels();
   updateHud(now);
@@ -1405,46 +1349,6 @@ function jump() {
   audio.playTone(330, 0.1);
 }
 
-function punchNearestBot() {
-  const now = performance.now() / 1000;
-  if (now - worldState.lastPunchAt < 0.65) return;
-  worldState.lastPunchAt = now;
-  const target = bots
-    .map((bot) => ({ bot, distance: Math.hypot(player.x - bot.x, player.z - bot.z) }))
-    .filter(({ distance }) => distance < 3)
-    .sort((a, b) => a.distance - b.distance)[0]?.bot;
-  if (!target) {
-    showToast("No hay ningún bot cerca para empujar");
-    return;
-  }
-  if (target.mode === "escaping" && target.target) {
-    const brainrot = target.target;
-    const slot = brainrot.slot;
-    if (slot && !slot.brainrot) {
-      brainrot.mode = "owned";
-      brainrot.available = true;
-      brainrot.group.visible = true;
-      brainrot.x = slot.x;
-      brainrot.y = slot.y;
-      brainrot.z = slot.z;
-      brainrot.group.position.set(slot.x, slot.y, slot.z);
-      slot.brainrot = brainrot;
-      slot.model = brainrot.group;
-    }
-  }
-  target.mode = "idle";
-  target.target = null;
-  target.x += Math.sign(target.x - player.x || 1) * 2.8;
-  target.z += Math.sign(target.z - player.z || 1) * 2.8;
-  target.base.botModel.rotation.z = -0.22;
-  setTimeout(() => {
-    if (target.base.botModel) target.base.botModel.rotation.z = 0;
-  }, 220);
-  target.nextAction = now + 5;
-  showToast("¡Empujón! El rival retrocede");
-  audio.playTone(190, 0.11, "triangle");
-}
-
 function interact() {
   const now = performance.now() / 1000;
   if (now - worldState.lastInteraction < 0.25) return;
@@ -1471,20 +1375,19 @@ function interact() {
   }
 
   if (worldState.nearestBase && worldState.nearestBase !== worldState.homeBase) {
-    showToast(worldState.nearestBase.shieldUntil > performance.now() / 1000 ? "La puerta está protegida" : "Busca un Brainrot libre para robar");
+    showToast("Base libre para otro jugador");
   } else {
     showToast("Acércate a la pasarela o a una base");
   }
 }
 
-function checkLootProximity(now) {
+function checkLootProximity() {
   worldState.closestLoot = null;
   worldState.nearestBase = null;
   let closestDistance = 3.2;
   for (const item of lootItems) {
     if (!item.available || !["belt", "owned"].includes(item.mode)) continue;
-    if (item.reservedBy?.target === item) continue;
-    if (item.mode === "owned" && (item.owner === worldState.homeBase || item.owner?.shieldUntil > now)) continue;
+    if (item.mode === "owned" && item.owner === worldState.homeBase) continue;
     const distance = Math.hypot(player.x - item.x, player.z - item.z);
     if (distance < closestDistance && Math.abs(player.y - item.y) < 2.5) {
       closestDistance = distance;
@@ -1518,42 +1421,33 @@ function checkLootProximity(now) {
   prompt.querySelector("span").textContent = promptText;
 }
 
-function purchaseBrainrot(item, buyer = worldState.homeBase) {
-  const base = buyer ?? worldState.homeBase;
+function purchaseBrainrot(item) {
+  const base = worldState.homeBase;
   const slot = base.slots.find((candidate) => !candidate.brainrot);
   if (!slot) {
-    if (base === worldState.homeBase) showToast("No tienes pedestales libres");
+    showToast("No tienes pedestales libres");
     return false;
   }
-  if (base === worldState.homeBase && player.cash < item.price) {
+  if (player.cash < item.price) {
     showToast(`Necesitas $${item.price} para comprarlo`);
     return false;
   }
-  if (base === worldState.homeBase) {
-    player.cash -= item.price;
-    showToast(`${item.name} camina hacia tu base`);
-    addFeed(`Compraste ${item.name} (${item.rarity}).`, false);
-    audio.playTone(523, 0.14);
-  } else {
-    base.bot.wallet = (base.bot.wallet ?? 220) - item.price;
-  }
+  player.cash -= item.price;
+  showToast(`Compraste ${item.name}`);
+  audio.playTone(523, 0.14);
   item.mode = "delivery";
   item.owner = base;
   item.slot = slot;
   item.available = false;
   item.group.remove(item.sign);
+  disposeObject(item.sign);
   slot.brainrot = item;
-  if (base.bot) base.bot.mode = "return";
   return true;
 }
 
 function stealBrainrot(item) {
   if (player.carried.length >= player.capacity) {
     showToast("Las manos están ocupadas: vuelve a tu base");
-    return;
-  }
-  if (item.owner?.shieldUntil > performance.now() / 1000) {
-    showToast("La puerta láser está activa");
     return;
   }
   const slot = item.slot;
@@ -1567,7 +1461,6 @@ function stealBrainrot(item) {
   syncCarriedModels();
   item.available = false;
   item.mode = "stolen";
-  addFeed(`¡Robaste ${item.name}! Llévalo a tu base.`, false);
   showToast(`${item.name} robado`);
   audio.playTone(760, 0.13);
 }
@@ -1603,8 +1496,6 @@ function depositLoot() {
   }
   syncCarriedModels();
   updateHud();
-  updateMission();
-  addFeed(`${item.name} ocupa un pedestal y genera $${item.income}/s.`, false);
   showToast(`${item.name} instalado`);
   audio.playTone(659, 0.18);
 }
@@ -1649,10 +1540,13 @@ function syncCarriedModels() {
 
 function disposeObject(object) {
   object.traverse((child) => {
-    if (!child.isMesh) return;
-    child.geometry.dispose();
-    if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose());
-    else child.material.dispose();
+    child.geometry?.dispose();
+    if (!child.material) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      material.map?.dispose();
+      material.dispose();
+    }
   });
 }
 
@@ -1679,181 +1573,12 @@ function purchaseUpgrade(type) {
   if (type === "capacity") player.capacity += 1;
   updateHud();
   showToast(`${upgrade.name} mejorado`);
-  addFeed(`${upgrade.name} mejorado al nivel ${player.upgrades[type]}.`, false);
 }
 
-function activateShield() {
-  const now = performance.now() / 1000;
-  if (now < shield.activeUntil) {
-    showToast("El escudo ya está activo");
-    return;
-  }
-  if (now < shield.cooldownUntil) {
-    showToast(`Escudo recargando: ${Math.ceil(shield.cooldownUntil - now)}s`);
-    return;
-  }
-  shield.activeUntil = now + shield.duration;
-  shield.cooldownUntil = now + shield.duration + shield.cooldown;
-  worldState.homeBase.shieldUntil = shield.activeUntil;
-  updateShieldVisual(worldState.homeBase, true);
-  addFeed("Puerta temporal activa: tu base está protegida.", false);
-  showToast("Puerta segura activada");
-}
-
-function updateShield(now) {
-  const active = now < shield.activeUntil;
-  if (worldState.homeBase) {
-    worldState.homeBase.shieldUntil = shield.activeUntil;
-    updateShieldVisual(worldState.homeBase, active);
-  }
-
-  if (active) {
-    shieldState.textContent = "Puerta protegida";
-    shieldTimer.textContent = `Se desactiva en ${Math.ceil(shield.activeUntil - now)}s`;
-    shieldMeter.style.width = `${Math.max(0, ((shield.activeUntil - now) / shield.duration) * 100)}%`;
-    shieldButton.disabled = true;
-    shieldButton.innerHTML = `ACTIVO <kbd>Q</kbd>`;
-  } else if (now < shield.cooldownUntil) {
-    const remaining = shield.cooldownUntil - now;
-    shieldState.textContent = "Escudo recargando";
-    shieldTimer.textContent = `Disponible en ${Math.ceil(remaining)}s`;
-    shieldMeter.style.width = `${Math.max(0, (1 - remaining / (shield.duration + shield.cooldown)) * 100)}%`;
-    shieldButton.disabled = true;
-    shieldButton.innerHTML = `RECARGA <kbd>Q</kbd>`;
-  } else {
-    shieldState.textContent = "Escudo listo";
-    shieldTimer.textContent = "Protege tus pedestales de los ladrones";
-    shieldMeter.style.width = "100%";
-    shieldButton.disabled = false;
-    shieldButton.innerHTML = `ACTIVAR <kbd>Q</kbd>`;
-  }
-}
-
-function updateShieldVisual(base, active) {
-  if (!base?.doorGroup) return;
-  base.doorGroup.visible = true;
-  base.doorGroup.children.at(-1).material.color.set(active ? "#69c8ff" : "#ff667a");
-  base.doorGroup.children.at(-1).material.transparent = active;
-  base.doorGroup.children.at(-1).material.opacity = active ? 0.72 : 0.32;
-}
-
-function checkRaid(now) {
-  if (!worldState.startAt || now < worldState.nextRaidAt) return;
-  const raider = bots.find((bot) => bot.mode === "idle");
-  if (raider) {
-    raider.mode = "raid";
-    addFeed("¡Un rival se acerca a tu base! Pulsa F para empujarlo.", true);
-  }
-  worldState.nextRaidAt += 22;
-  updateHud(now);
-}
-
-function updateIncome(delta, now) {
+function updateIncome(delta) {
   for (const base of bases) {
     const income = base.slots.reduce((sum, slot) => sum + (slot.brainrot?.income ?? 0), 0);
     base.accrued += income * delta;
-    if (base.bot) base.bot.wallet = Math.min(5000, (base.bot.wallet ?? 220) + income * delta * 0.35);
-  }
-
-  if (worldState.botPurchaseAt == null) worldState.botPurchaseAt = now + 3;
-  if (now >= worldState.botPurchaseAt) {
-    worldState.botPurchaseAt = now + 9;
-    for (const bot of bots) {
-      if (bot.mode !== "idle") continue;
-      const target = lootItems.find(
-        (item) => item.mode === "belt" && !item.reservedBy && item.price <= (bot.wallet ?? 220),
-      );
-      if (!target || !bot.base.slots.some((slot) => !slot.brainrot)) continue;
-      bot.mode = "buying";
-      bot.target = target;
-      target.reservedBy = bot;
-    }
-  }
-
-  for (const bot of bots) updateBot(bot, delta, now);
-}
-
-function updateBot(bot, delta, now) {
-  const model = bot.base.botModel;
-  const walkTo = (x, z) => {
-    const dx = x - bot.x;
-    const dz = z - bot.z;
-    const distance = Math.hypot(dx, dz);
-    if (distance > 0.75) {
-      bot.x += (dx / distance) * bot.speed * delta;
-      bot.z += (dz / distance) * bot.speed * delta;
-      model.rotation.y = Math.atan2(dx, dz);
-    }
-    model.position.set(bot.x - bot.base.x, 0.38 + Math.abs(Math.sin(now * 9 + bot.id)) * 0.06, bot.z - bot.base.z);
-    return distance;
-  };
-
-  if (bot.mode === "buying" && bot.target) {
-    if (bot.target.mode !== "belt" || bot.target.reservedBy !== bot) {
-      bot.mode = "idle";
-      bot.target = null;
-      bot.nextAction = now + 4;
-      return;
-    }
-    if (walkTo(0, bot.target.z) < 1.8) {
-      const bought = bot.target;
-      bot.target = null;
-      bot.mode = "idle";
-      bot.nextAction = now + 10;
-      purchaseBrainrot(bought, bot.base);
-    }
-  } else if (bot.mode === "return") {
-    if (walkTo(bot.base.x, bot.base.z) < 1) {
-      bot.mode = "idle";
-      bot.nextAction = now + 12;
-    }
-  } else if (bot.mode === "raid") {
-    if (walkTo(worldState.homeBase.x, worldState.homeBase.z) < 7) {
-      if (now < worldState.homeBase.shieldUntil) {
-        addFeed("¡La puerta repelió al rival!", false);
-        bot.mode = "escaping";
-        bot.target = null;
-      } else {
-        const slot = worldState.homeBase.slots.find((candidate) => candidate.brainrot);
-        if (slot) {
-          bot.target = slot.brainrot;
-          slot.brainrot.available = false;
-          slot.brainrot.mode = "raided";
-          slot.brainrot.group.visible = false;
-          slot.brainrot = null;
-          bot.mode = "escaping";
-          addFeed(`¡${bot.target.name} fue robado de tu base!`, true);
-        } else {
-          bot.mode = "escaping";
-          showToast("El rival no encontró Brainrots");
-        }
-      }
-    }
-  } else if (bot.mode === "escaping") {
-    const distance = walkTo(bot.base.x, bot.base.z);
-    if (distance < 1) {
-      if (bot.target) {
-        const slot = bot.base.slots.find((candidate) => !candidate.brainrot);
-        if (slot) {
-          bot.target.owner = bot.base;
-          bot.target.slot = slot;
-          bot.target.mode = "owned";
-          bot.target.available = true;
-          bot.target.x = slot.x;
-          bot.target.y = slot.y;
-          bot.target.z = slot.z;
-          bot.target.group.position.set(slot.x, slot.y, slot.z);
-          bot.target.group.visible = true;
-          slot.brainrot = bot.target;
-          slot.model = bot.target.group;
-        }
-        bot.target = null;
-      }
-      bot.mode = "idle";
-      bot.nextAction = now + 18;
-    }
-  } else if (bot.mode === "idle") {
-    walkTo(bot.base.x, bot.base.z);
   }
 }
 
@@ -1865,15 +1590,17 @@ function animateLoot(now, delta) {
   }
   for (const item of lootItems) {
     if (item.mode === "belt") {
-      if (item.reservedBy && item.reservedBy.target !== item) continue;
       item.z += 4.2 * delta;
       if (item.z > 42) {
         item.z = -42;
         const catalog = BRAINROT_CATALOG[Math.floor(Math.random() * BRAINROT_CATALOG.length)];
         const rarity = chooseRarity();
-        Object.assign(item, catalog, rarity, { value: rarity.price, rarity: rarity.name });
-        if (item.sign?.userData.canvasTexture) item.sign.userData.canvasTexture.dispose();
-        item.group.remove(item.sign);
+        Object.assign(item, catalog, rarity, { bodyColor: catalog.color, value: rarity.price, rarity: rarity.name });
+        scene.remove(item.group);
+        disposeObject(item.group);
+        item.group = createBrainrotModel(item);
+        item.group.position.set(item.x, item.baseY, item.z);
+        scene.add(item.group);
         item.sign = createTextSprite(`${item.name} · ${item.rarity} · $${item.price} · $${item.income}/s`, "#fffdf1", item.color);
         item.sign.position.set(0, 2.8, 0);
         item.sign.scale.set(4.9, 1.38, 1);
@@ -1901,6 +1628,14 @@ function animateLoot(now, delta) {
       item.group.position.y = item.y + Math.sin(now * 2 + item.index) * 0.08;
       item.group.rotation.y = Math.sin(now * 0.5 + item.index) * 0.08;
     }
+    const gaitPhase = now * (item.mode === "belt" || item.mode === "delivery" ? 7 : 1.7) + item.group.userData.bobPhase;
+    const gaitAmount = item.mode === "belt" || item.mode === "delivery" ? 0.42 : 0.06;
+    item.group.userData.legs?.forEach((leg, index) => {
+      leg.rotation.x = Math.sin(gaitPhase + index * Math.PI) * gaitAmount;
+    });
+    item.group.userData.arms?.forEach((arm, index) => {
+      arm.rotation.x = Math.sin(gaitPhase + (index + 1) * Math.PI) * gaitAmount * 0.72;
+    });
     if (item.group.visible) {
       const scale = worldState.closestLoot === item ? 1.12 + Math.sin(now * 8) * 0.035 : 1;
       if (item.mode !== "owned") item.group.scale.setScalar(scale);
@@ -1971,12 +1706,7 @@ function updateHud(now = performance.now() / 1000) {
   moneyValue.textContent = `$${player.cash}`;
   shopMoney.textContent = `$${player.cash}`;
   const homeIncome = worldState.homeBase?.slots.reduce((sum, slot) => sum + (slot.brainrot?.income ?? 0), 0) ?? 0;
-  bagValue.innerHTML = `${Math.floor(homeIncome)} <small>$/s</small>`;
-  bagDetail.textContent = `Banco: $${Math.floor(worldState.homeBase?.accrued ?? 0)} · ${player.carried.length} en mano`;
-
-  const filledSlots = worldState.homeBase?.slots.filter((slot) => slot.brainrot).length ?? 0;
-  missionProgress.style.width = `${(filledSlots / 4) * 100}%`;
-  updateMission();
+  incomeValue.innerHTML = `$${Math.floor(homeIncome)} <small>/s</small>`;
 
   for (const button of document.querySelectorAll("[data-upgrade]")) {
     const type = button.dataset.upgrade;
@@ -1992,36 +1722,8 @@ function updateHud(now = performance.now() / 1000) {
   }
 }
 
-function updateMission() {
-  if (player.carried.length > 0 && worldState.nearBase) {
-    missionTitle.textContent = "Coloca tu Brainrot";
-    missionDetail.textContent = "Acércate a un pedestal libre y pulsa E";
-  } else if (player.carried.length > 0) {
-    missionTitle.textContent = "¡Vuelve a tu base!";
-    missionDetail.textContent = `${player.carried[0].name} te sigue · pulsa E en un pedestal`;
-  } else if (worldState.homeBase?.slots.every((slot) => slot.brainrot)) {
-    missionTitle.textContent = "¡Base completa!";
-    missionDetail.textContent = `Recoge $${Math.floor(worldState.homeBase.accrued)} del botón verde`;
-  } else {
-    missionTitle.textContent = "¡Compra en la pasarela!";
-    missionDetail.textContent = "Acércate a un Brainrot y pulsa E · roba en bases rivales";
-  }
-}
-
-function addFeed(message, warning) {
-  const line = document.createElement("div");
-  line.className = `feed-message${warning ? " is-warning" : ""}`;
-  const marker = document.createElement("i");
-  marker.setAttribute("aria-hidden", "true");
-  const text = document.createElement("span");
-  text.textContent = message;
-  line.append(marker, text);
-  feedMessages.prepend(line);
-  while (feedMessages.children.length > 3) feedMessages.lastElementChild.remove();
-}
-
 function showToast(message) {
   toast.textContent = message;
   toast.classList.add("is-visible");
-  worldState.toastUntil = performance.now() / 1000 + 1.8;
+  worldState.toastUntil = performance.now() / 1000 + 2.2;
 }
