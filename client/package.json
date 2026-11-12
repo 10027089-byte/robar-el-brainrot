@@ -1,0 +1,17 @@
+{
+  "name": "robar-el-brainrot-client",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config ../vite.config.js",
+    "build": "vite build --config ../vite.config.js",
+    "preview": "vite preview --config ../vite.config.js"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  }
+}
