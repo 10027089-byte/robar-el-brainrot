@@ -13,6 +13,7 @@
   --cyan: #54f3d0;
   --violet: #9f82ff;
   --gold: #ffd76f;
+  --boxity-ui-top: 0px;
 }
 
 * {
@@ -115,8 +116,10 @@ button {
 }
 
 .hud {
-  top: max(76px, calc(env(safe-area-inset-top) + 60px));
-  left: 20px;
+  position: fixed;
+  top: calc(var(--boxity-ui-top) + 12px);
+  right: 20px;
+  left: auto;
   display: flex;
   align-items: stretch;
   gap: 10px;
@@ -124,7 +127,7 @@ button {
 
 .player-identity {
   position: fixed;
-  top: max(76px, calc(env(safe-area-inset-top) + 60px));
+  top: calc(var(--boxity-ui-top) + 2px);
   right: 20px;
   max-width: 180px;
   overflow: hidden;
@@ -226,8 +229,8 @@ button {
 }
 
 .event-feed {
-  top: 202px;
-  left: 28px;
+  bottom: 76px;
+  left: 20px;
   width: 245px;
   padding: 12px 14px 10px;
 }
@@ -669,7 +672,6 @@ kbd {
 
 @media (max-width: 760px) {
   .player-identity {
-    top: max(68px, calc(env(safe-area-inset-top) + 54px));
     right: 14px;
   }
 
@@ -678,8 +680,8 @@ kbd {
   }
 
   .hud {
-    top: max(68px, calc(env(safe-area-inset-top) + 54px));
-    left: 14px;
+    top: calc(var(--boxity-ui-top) + 12px);
+    right: 14px;
     gap: 6px;
   }
 
@@ -712,7 +714,7 @@ kbd {
   }
 
   .event-feed {
-    top: 155px;
+    bottom: max(140px, calc(env(safe-area-inset-bottom) + 140px));
     left: 14px;
     width: min(205px, 52vw);
     padding: 9px 10px;

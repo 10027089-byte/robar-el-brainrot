@@ -148,8 +148,8 @@ addFeed("Tu base está lista. ¡Sal a explorar!", false);
 async function boot() {
   try {
     if (!window.Legion?.SDK) throw new Error("No se cargó el SDK de Boxity.");
-    boxitySdk = window.Legion.SDK;
-    await boxitySdk.init({ gameSlug: GAME_SLUG });
+    boxitySdk = Legion.SDK;
+    await Legion.SDK.init({ gameSlug: GAME_SLUG });
     configureBoxity();
 
     boxitySdk.game.loadingStep("Preparando tu avatar...");
@@ -181,13 +181,14 @@ async function boot() {
 }
 
 function configureBoxity() {
-  boxityEnvironment = boxitySdk.environment();
+  boxityEnvironment = Legion.SDK.environment();
   if (!boxityEnvironment?.apiUrl || !boxityEnvironment?.staticUrl) {
     throw new Error("Boxity no proporcionó su entorno de plataforma.");
   }
-  boxitySdk.game.registerFeature("emotes");
-  boxitySdk.ads.declareScreens({ gameplay: {} });
-  boxitySdk.leaderboard.define([
+  Legion.SDK.game.registerFeature("emotes");
+  Legion.SDK.game.registerFeature("leaderboard");
+  Legion.SDK.ads.declareScreens({ gameplay: {} });
+  Legion.SDK.leaderboard.define([
     {
       id: "brainrots-stolen",
       label: "Brainrots robados",
@@ -197,56 +198,66 @@ function configureBoxity() {
       reset: "none",
     },
   ]);
-  boxitySdk.ads.onBreakStart(() => {
+  Legion.SDK.ads.onBreakStart(() => {
     adBreakActive = true;
     worldState.paused = true;
     keys.clear();
     audio.setMuted(true);
   });
-  boxitySdk.ads.onBreakEnd(() => {
+  Legion.SDK.ads.onBreakEnd(() => {
     adBreakActive = false;
     worldState.paused = false;
     audio.setMuted(false);
   });
 
-  const unsubscribeUser = boxitySdk.auth.onUserChanged((user) => {
-    const identity = user ?? boxitySdk.auth.getGuest?.();
+  const unsubscribeUser = Legion.SDK.auth.onUserChanged((user) => {
+    const identity = user ?? Legion.SDK.auth.getGuest?.();
     playerIdentity.textContent = identity?.displayName || identity?.username || (typeof identity === "string" ? identity : "");
     if (avatarReady) refreshBoxityAvatar().catch((error) => console.error("No se pudo actualizar el avatar:", error));
   });
   sdkUnsubscribers.push(unsubscribeUser);
 
-  sdkUnsubscribers.push(boxitySdk.player.onEvent((event) => {
+  sdkUnsubscribers.push(Legion.SDK.player.onEvent((event) => {
     if (event === "respawn_request") resetPlayerToSpawn();
   }));
-  sdkUnsubscribers.push(boxitySdk.player.onEvent((event, data) => {
+  sdkUnsubscribers.push(Legion.SDK.player.onEvent((event, data) => {
     if (event === "play_emote") playEmote(data);
   }));
-  sdkUnsubscribers.push(boxitySdk.avatar.onAvatarChanged(() => {
+  sdkUnsubscribers.push(Legion.SDK.avatar.onAvatarChanged(() => {
     refreshBoxityAvatar().catch((error) => console.error("No se pudo actualizar el avatar:", error));
   }));
-  sdkUnsubscribers.push(boxitySdk.avatar.onProportionsChanged(() => {
+  sdkUnsubscribers.push(Legion.SDK.avatar.onProportionsChanged(() => {
     activeOutfitKey = null;
     refreshBoxityAvatar().catch((error) => console.error("No se pudieron actualizar las proporciones:", error));
   }));
-  if (typeof boxitySdk.onEnvironmentChanged === "function") {
-    sdkUnsubscribers.push(boxitySdk.onEnvironmentChanged((environment) => {
+  if (typeof Legion.SDK.onEnvironmentChanged === "function") {
+    sdkUnsubscribers.push(Legion.SDK.onEnvironmentChanged((environment) => {
       boxityEnvironment = environment;
       loadEmoteCatalog().catch((error) => console.error("No se pudo actualizar el catálogo de emotes:", error));
       refreshBoxityAvatar().catch((error) => console.error("No se pudo actualizar el avatar:", error));
     }));
   }
 
-  boxitySdk.settings.listen("master_volume", (value) => audio.setMasterVolume(Number(value) / 100));
-  boxitySdk.settings.listen("music_volume", (value) => audio.setMusicVolume(Number(value) / 100));
-  boxitySdk.settings.listen("graphics_quality", applyGraphicsQuality);
-  boxitySdk.settings.listen("camera_sensitivity", (value) => {
+  Legion.SDK.settings.listen("master_volume", (value) => audio.setMasterVolume(Number(value) / 100));
+  Legion.SDK.settings.listen("music_volume", (value) => audio.setMusicVolume(Number(value) / 100));
+  Legion.SDK.settings.listen("graphics_quality", applyGraphicsQuality);
+  Legion.SDK.settings.listen("camera_sensitivity", (value) => {
     cameraSensitivity = THREE.MathUtils.clamp(Number(value) || 1, 0.1, 5);
   });
-  boxitySdk.settings.triggerAll();
-  boxitySdk.ads.screen("gameplay");
+  Legion.SDK.settings.triggerAll();
+  Legion.SDK.ads.screen("gameplay");
+  const unsubscribeReservedAreas = Legion.SDK.ui.onReservedAreasChange(applyReservedAreas);
+  sdkUnsubscribers.push(unsubscribeReservedAreas);
 
   window.addEventListener("pagehide", stopGameplay, { once: true });
+}
+
+function applyReservedAreas(areas) {
+  const reservedBottom = (Array.isArray(areas) ? areas : []).reduce(
+    (bottom, area) => Math.max(bottom, Number(area.top) + Number(area.height)),
+    0,
+  );
+  document.documentElement.style.setProperty("--boxity-ui-top", `${reservedBottom}px`);
 }
 
 function applyGraphicsQuality(value) {
@@ -273,7 +284,7 @@ function stopGameplay() {
   } else {
     boxitySdk.game.gameplayEnd();
   }
-  boxitySdk.ads.hideScreen();
+  Legion.SDK.ads.hideScreen();
   for (const unsubscribe of sdkUnsubscribers.splice(0)) {
     if (typeof unsubscribe === "function") unsubscribe();
   }
@@ -285,9 +296,8 @@ function platformUrl(baseUrl, path) {
 
 async function refreshBoxityAvatar() {
   if (!boxitySdk || !boxityEnvironment) return;
-  const avatarApi = boxitySdk.avatar;
-  const equipped = avatarApi.getEquipped();
-  const outfitKey = avatarApi.getOutfitKey();
+  const equipped = Legion.SDK.avatar.getEquipped();
+  const outfitKey = Legion.SDK.avatar.getOutfitKey();
   const characterId = equipped.characterId;
   const hasCustomCharacter = characterId && !["-1", "undefined", "null"].includes(String(characterId));
   const loadVersion = (refreshBoxityAvatar.version ?? 0) + 1;
@@ -299,13 +309,13 @@ async function refreshBoxityAvatar() {
     return;
   }
 
-  const character = hasCustomCharacter ? await avatarApi.getCharacterFor(equipped) : null;
+  const character = hasCustomCharacter ? await Legion.SDK.avatar.getCharacterFor(equipped) : null;
   const modelUrl = character?.glbUrl || platformUrl(boxityEnvironment.staticUrl, "avatars/player.glb");
   const gltf = await avatarLoader.loadAsync(modelUrl);
   if (loadVersion !== refreshBoxityAvatar.version) return;
 
   const nextRig = gltf.scene;
-  const proportions = hasCustomCharacter ? null : avatarApi.getProportions();
+  const proportions = hasCustomCharacter ? null : Legion.SDK.avatar.getProportions();
   const height = proportions?.height ?? 1;
   nextRig.scale.set(0.25, 0.25 * height, 0.25);
   nextRig.updateMatrixWorld(true);
@@ -327,9 +337,8 @@ async function refreshBoxityAvatar() {
   if (character) {
     await applyCustomCharacterAccessories(avatarRig, equipped, character);
   } else {
-    const characterKit = boxitySdk.character;
-    if (typeof characterKit?.canDress === "function" && characterKit.canDress(outfitKey)) {
-      avatarDressHandle = await characterKit.dress({
+    if (typeof Legion.SDK.character?.canDress === "function" && Legion.SDK.character.canDress(outfitKey)) {
+      avatarDressHandle = await Legion.SDK.character.dress({
         THREE,
         GLTFLoader,
         root: avatarRig,
@@ -342,8 +351,7 @@ async function refreshBoxityAvatar() {
 }
 
 async function applyFallbackAvatarAppearance(root, equipped) {
-  const avatarApi = boxitySdk.avatar;
-  const skinTextureUrl = avatarApi.getSkinTextureUrlFor(equipped);
+  const skinTextureUrl = Legion.SDK.avatar.getSkinTextureUrlFor(equipped);
   if (skinTextureUrl) {
     const skinTexture = await new THREE.TextureLoader().loadAsync(skinTextureUrl);
     skinTexture.colorSpace = THREE.SRGBColorSpace;
@@ -360,17 +368,16 @@ async function applyFallbackAvatarAppearance(root, equipped) {
   const slots = [
     { field: "hatId", bone: "Neck1", origin: [0, 0.8, 0] },
     { field: "backId", bone: "Spine2", origin: [0, 0, 0] },
-    ...avatarApi.getAccessorySlots(),
+    ...Legion.SDK.avatar.getAccessorySlots(),
   ];
   await Promise.all(slots.map((slot) => attachAvatarAccessory(root, equipped, slot)));
 }
 
 async function applyCustomCharacterAccessories(root, equipped, character) {
-  const avatarApi = boxitySdk.avatar;
   const slots = [
     { field: "hatId", bone: "Neck1", origin: [0, 5.6, 0] },
     { field: "backId", bone: "Spine2", origin: [0, 4.2, 0] },
-    ...avatarApi.getAccessorySlots().map((slot) => (
+    ...Legion.SDK.avatar.getAccessorySlots().map((slot) => (
       ["hairId", "maskId"].includes(slot.field) ? { ...slot, origin: [0, 5.6, 0] } : slot
     )),
   ];
@@ -380,7 +387,7 @@ async function applyCustomCharacterAccessories(root, equipped, character) {
 async function attachAvatarAccessory(root, equipped, slot, character = null) {
   const id = equipped[slot.field];
   if (!id || ["-1", "undefined", "null"].includes(String(id))) return;
-  const urls = boxitySdk.avatar.getAccessoryUrls(slot.field, id);
+  const urls = Legion.SDK.avatar.getAccessoryUrls(slot.field, id);
   if (!urls?.mesh) return;
 
   try {
@@ -407,7 +414,7 @@ async function attachAvatarAccessory(root, equipped, slot, character = null) {
       const placement = new THREE.Matrix4().makeTranslation(...(slot.origin ?? [0, 0, 0]));
       let localMatrix;
       if (character) {
-        const characterMatrix = boxitySdk.avatar.characterAccessoryMatrix(character, boneName);
+        const characterMatrix = Legion.SDK.avatar.characterAccessoryMatrix(character, boneName);
         localMatrix = characterMatrix ? new THREE.Matrix4().fromArray(characterMatrix) : bone.matrixWorld.clone().invert().multiply(root.matrixWorld);
       } else {
         localMatrix = bone.matrixWorld.clone().invert().multiply(root.matrixWorld);
@@ -1090,7 +1097,7 @@ function depositLoot() {
 
 async function submitLeaderboardScore(count) {
   try {
-    const result = await boxitySdk.leaderboard.submit("brainrots-stolen", count);
+    const result = await Legion.SDK.leaderboard.submit("brainrots-stolen", count);
     if (result?.results?.some((entry) => entry.improved)) showToast("¡Nuevo récord de brainrots!");
   } catch (error) {
     console.error("No se pudo enviar el resultado al leaderboard:", error);
