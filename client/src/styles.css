@@ -818,3 +818,141 @@ kbd {
     left: 8px;
   }
 }
+
+:root {
+  color: #44392e;
+  background: #a4e5ff;
+  --panel: rgba(255, 250, 234, 0.94);
+  --panel-strong: rgba(255, 250, 234, 0.98);
+  --line: rgba(136, 104, 68, 0.2);
+  --muted: #89755c;
+  --cyan: #59b879;
+  --violet: #a77cce;
+  --gold: #efb843;
+  --boxity-ui-top: 0px;
+}
+
+body {
+  background: linear-gradient(180deg, #90dcff 0%, #c3efff 54%, #94d878 100%);
+}
+
+.game-shell::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 45%, rgba(53, 105, 50, 0.07));
+}
+
+.stat-card,
+.mission-card,
+.shop-panel,
+.shield-card,
+.event-feed {
+  border-color: rgba(136, 104, 68, 0.2);
+  background: rgba(255, 250, 234, 0.94);
+  box-shadow: 0 8px 26px rgba(89, 107, 57, 0.16);
+  backdrop-filter: blur(10px);
+}
+
+.stat-card strong {
+  color: #b47a18;
+}
+
+.bag-card strong,
+.shield-button,
+.speed-icon {
+  color: #477d55;
+}
+
+.stat-foot,
+.feed-message,
+.feed-heading,
+.controls-hint {
+  color: #89755c;
+}
+
+.upgrade-card {
+  background: rgba(160, 127, 82, 0.07);
+}
+
+.upgrade-card:hover:not(:disabled) {
+  border-color: rgba(84, 173, 101, 0.4);
+  background: rgba(84, 173, 101, 0.12);
+}
+
+.jump-icon {
+  color: #9970bd;
+}
+
+.bag-icon,
+.shop-currency,
+.upgrade-cost {
+  color: #a77920;
+}
+
+.shield-button {
+  border-color: rgba(84, 173, 101, 0.4);
+  background: rgba(84, 173, 101, 0.12);
+}
+
+kbd {
+  border-color: rgba(136, 104, 68, 0.24);
+  color: #6e5635;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.world-label {
+  color: rgba(65, 77, 42, 0.9);
+  text-shadow: 0 1px 5px rgba(255, 255, 255, 0.95);
+}
+
+.interaction-prompt {
+  border-color: rgba(136, 104, 68, 0.24);
+  color: #59472f;
+  background: rgba(255, 250, 234, 0.98);
+}
+
+.toast {
+  border-color: rgba(84, 173, 101, 0.36);
+  color: #4a633a;
+  background: rgba(255, 250, 234, 0.97);
+  box-shadow: 0 8px 28px rgba(56, 90, 43, 0.15);
+}
+
+.dpad button,
+.mobile-action {
+  border-color: rgba(136, 104, 68, 0.24);
+  color: #5a4833;
+  background: rgba(255, 250, 234, 0.9);
+  box-shadow: 0 5px 16px rgba(79, 99, 55, 0.15);
+}
+
+.dpad button:active,
+.mobile-action:active {
+  border-color: rgba(84, 173, 101, 0.65);
+  background: rgba(133, 216, 139, 0.5);
+}
+
+.mobile-actions {
+  height: 148px;
+}
+
+.punch-action {
+  right: 51px;
+  bottom: 58px;
+  color: #bb6653;
+}
+
+.label-base {
+  left: 22%;
+  bottom: 35%;
+}
+
+.label-vault {
+  top: 54%;
+  left: 47%;
+}
+
+@media (max-width: 760px) {
+  .label-vault {
+    top: 50%;
+    left: 43%;
+  }
+}

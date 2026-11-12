@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#090d18" />
+    <meta name="theme-color" content="#8bdcff" />
     <meta
       name="description"
-      content="Corre por la ruta, recoge criaturas cósmicas y protege tu base."
+      content="Compra Brainrots en la pasarela, llena tu base y defiéndela de tus rivales."
     />
     <title>Robar el Brainrot</title>
     <script src="https://sdk.bloxity.io/v1/legion-sdk.min.js"></script>
@@ -36,7 +36,7 @@
       </section>
 
       <div class="world-label label-base" aria-hidden="true"><span>⌂</span> TU BASE</div>
-      <div class="world-label label-vault" aria-hidden="true"><span>✦</span> ZONA DE HALLAZGOS</div>
+      <div class="world-label label-vault" aria-hidden="true"><span>★</span> PASARELA CENTRAL</div>
 
       <aside class="event-feed" aria-live="polite">
         <div class="feed-heading"><span></span> TRANSMISIONES</div>
@@ -46,8 +46,8 @@
       <section class="shop-panel" aria-label="Tienda de mejoras">
         <div class="shop-heading">
           <div>
-            <span class="panel-eyebrow">PUESTO DE MEJORAS</span>
-            <strong>Prepara tu expedición</strong>
+            <span class="panel-eyebrow">TALLER DEL PARQUE</span>
+            <strong>Mejora tu velocidad</strong>
           </div>
           <span class="shop-currency">✦ <span id="shop-money">$0</span></span>
         </div>
@@ -73,9 +73,9 @@
       <section class="shield-card" aria-label="Escudo de la base">
         <div class="shield-icon">⌬</div>
         <div class="shield-copy">
-          <span class="panel-eyebrow">DEFENSA DE BASE</span>
+          <span class="panel-eyebrow">PUERTA DE SEGURIDAD</span>
           <strong id="shield-state">Escudo listo</strong>
-          <span id="shield-timer">Protege tus créditos de los saqueadores</span>
+          <span id="shield-timer">Protege tus pedestales de los ladrones</span>
           <div class="shield-meter"><span id="shield-meter"></span></div>
         </div>
         <button id="shield-button" class="shield-button" type="button">ACTIVAR <kbd>Q</kbd></button>
@@ -90,7 +90,9 @@
       <footer class="controls-hint">
         <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> MOVER</span>
         <span><kbd>ESPACIO</kbd> SALTAR</span>
-        <span><kbd>E</kbd> RECOGER / DEPOSITAR</span>
+        <span><kbd>E</kbd> COMPRAR / ROBAR / COBRAR</span>
+        <span><kbd>F</kbd> EMPUJAR</span>
+        <span>ARRASTRA PARA MIRAR</span>
       </footer>
 
       <div class="mobile-controls" aria-label="Controles táctiles">
@@ -103,6 +105,7 @@
         <div class="mobile-actions">
           <button id="mobile-interact" class="mobile-action interact-action" aria-label="Interactuar">E</button>
           <button id="mobile-jump" class="mobile-action jump-action" aria-label="Saltar">↑</button>
+          <button id="mobile-punch" class="mobile-action punch-action" aria-label="Empujar">F</button>
         </div>
       </div>
     </main>

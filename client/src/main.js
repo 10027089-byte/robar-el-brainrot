@@ -34,14 +34,14 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color("#10172a");
-scene.fog = new THREE.FogExp2("#10172a", 0.012);
+scene.background = new THREE.Color("#88d9ff");
+scene.fog = new THREE.Fog(0xade8ff, 65, 150);
 
-const camera = new THREE.PerspectiveCamera(47, 1, 0.1, 180);
-camera.position.set(-11, 12, 18);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 220);
+camera.position.set(0, 5, 7);
 let cameraSensitivity = 1;
 let cameraYaw = 0;
-let cameraPitch = 0;
+let cameraPitch = 0.15;
 let cameraDrag = null;
 let boxityEnvironment = null;
 let boxitySdk = null;
@@ -56,30 +56,28 @@ let adBreakActive = false;
 let gameplayReported = false;
 const sdkUnsubscribers = [];
 
-const hemiLight = new THREE.HemisphereLight("#b5d8ff", "#111324", 2.2);
+const hemiLight = new THREE.HemisphereLight("#e7faff", "#609356", 2.6);
 scene.add(hemiLight);
 
-const moonLight = new THREE.DirectionalLight("#f4f3ff", 3);
-moonLight.position.set(-12, 23, 12);
+const moonLight = new THREE.DirectionalLight("#fff5d6", 3.2);
+moonLight.position.set(-24, 38, 18);
 moonLight.castShadow = true;
-moonLight.shadow.mapSize.set(2048, 2048);
-moonLight.shadow.camera.left = -35;
-moonLight.shadow.camera.right = 35;
-moonLight.shadow.camera.top = 35;
-moonLight.shadow.camera.bottom = -35;
+moonLight.shadow.mapSize.set(1024, 1024);
+moonLight.shadow.camera.left = -50;
+moonLight.shadow.camera.right = 50;
+moonLight.shadow.camera.top = 50;
+moonLight.shadow.camera.bottom = -50;
 scene.add(moonLight);
-
-const cyanLight = new THREE.PointLight("#3df3d2", 36, 22, 2);
-cyanLight.position.set(0, 4, 0);
-scene.add(cyanLight);
 
 const platforms = [];
 const lootItems = [];
+const bases = [];
+const bots = [];
 const keys = new Set();
 const clock = new THREE.Clock();
 
 const player = {
-  x: 0,
+  x: -15,
   y: 0,
   z: 0,
   vy: 0,
@@ -88,9 +86,9 @@ const player = {
   speed: 7.2,
   jump: 9.5,
   upgradeJump: 0,
-  capacity: 3,
+  capacity: 1,
   carried: [],
-  cash: 0,
+  cash: 250,
   upgrades: { speed: 0, jump: 0, capacity: 0 },
 };
 
@@ -103,28 +101,42 @@ const shield = {
 
 const worldState = {
   startAt: 0,
-  nextRaidAt: 35,
+  nextRaidAt: 12,
   lastInteraction: 0,
   toastUntil: 0,
   paused: false,
   closestLoot: null,
   nearBase: false,
+  nearestBase: null,
+  homeBase: null,
+  currentAction: "idle",
+  laneDirection: 1,
+  lastPunchAt: 0,
 };
 
-const platformSpecs = [
-  { x: 0, z: 0, y: 0, width: 11, depth: 11, kind: "base" },
-  { x: 8, z: 0, y: 0.6, width: 4.4, depth: 4.4, kind: "path" },
-  { x: 13, z: -2.4, y: 1.2, width: 4.6, depth: 4.6, kind: "path" },
-  { x: 18, z: 1.2, y: 1.8, width: 4.8, depth: 4.8, kind: "path" },
-  { x: 25, z: 0, y: 1, width: 9, depth: 9, kind: "vault" },
+const RARITIES = [
+  { name: "Común", color: "#82d45b", chance: 0.42, price: 35, income: 2 },
+  { name: "Raro", color: "#58b9ff", chance: 0.28, price: 90, income: 6 },
+  { name: "Épico", color: "#b278ff", chance: 0.17, price: 240, income: 18 },
+  { name: "Legendario", color: "#ffad45", chance: 0.095, price: 650, income: 52 },
+  { name: "Mítico", color: "#ff668f", chance: 0.035, price: 1800, income: 150 },
 ];
 
-const lootSpecs = [
-  { x: 8, z: 0, y: 0.6, name: "Pompón Cósmico", value: 15, color: "#51ead2", shape: "sphere" },
-  { x: 13, z: -2.4, y: 1.2, name: "Sapo Nebular", value: 25, color: "#b28aff", shape: "frog" },
-  { x: 18, z: 1.2, y: 1.8, name: "Tostada Astral", value: 35, color: "#ffcb68", shape: "toast" },
-  { x: 25, z: 0, y: 1, name: "Píxel Gelatinoso", value: 55, color: "#ff759d", shape: "pixel" },
+const BRAINROT_CATALOG = [
+  { name: "Capibara Coco", shape: "capybara", color: "#c9925e" },
+  { name: "Pato Patatín", shape: "duck", color: "#ffd85c" },
+  { name: "Cactus Bailarín", shape: "cactus", color: "#64c66a" },
+  { name: "Gatito Ravioli", shape: "cat", color: "#ff9d80" },
+  { name: "Tortuga Tutti", shape: "turtle", color: "#55c8a0" },
+  { name: "Llama Limón", shape: "llama", color: "#f6ca75" },
+  { name: "Pollito Pop", shape: "chick", color: "#ffe978" },
+  { name: "Panda Mochi", shape: "panda", color: "#f3eee6" },
+  { name: "Conejo Churro", shape: "rabbit", color: "#efb4c6" },
+  { name: "Ajolote Arcoíris", shape: "axolotl", color: "#ff8fc4" },
 ];
+
+const BASE_ZONES = [-27, -9, 9, 27];
+const BASE_COLORS = ["#ff8873", "#79c8ff", "#c89cff", "#ffd166", "#70d6a5", "#ff9ec2", "#a9c5ff", "#f7b267"];
 
 const avatar = new THREE.Group();
 const fallbackAvatar = createAvatar();
@@ -136,9 +148,6 @@ const laserShield = createLaserShield();
 scene.add(laserShield);
 laserShield.visible = false;
 
-createWorld();
-createLoot();
-createStars();
 bindControls();
 resize();
 window.addEventListener("resize", resize);
@@ -153,6 +162,7 @@ async function boot() {
     configureBoxity();
 
     boxitySdk.game.loadingStep("Preparando tu avatar...");
+    await createWorld();
     try {
       await refreshBoxityAvatar();
     } catch (error) {
@@ -175,7 +185,7 @@ async function boot() {
   }
 
   worldState.startAt = performance.now() / 1000;
-  worldState.nextRaidAt = 35;
+  worldState.nextRaidAt = performance.now() / 1000 + 12;
   addFeed("Expedición iniciada. Recoge hallazgos y vuelve a tu base.", false);
   renderer.setAnimationLoop(animate);
 }
@@ -516,17 +526,17 @@ function updateEmote(now) {
 function resetPlayerToSpawn() {
   keys.clear();
   stopEmote();
-  player.x = 0;
+  player.x = worldState.homeBase?.x ?? 0;
   player.y = 0;
-  player.z = 0;
+  player.z = worldState.homeBase?.z ?? 0;
   player.vy = 0;
   player.grounded = true;
-  avatar.position.set(0, 0, 0);
+  avatar.position.set(player.x, 0, player.z);
   syncCarriedModels();
   showToast("Volviste a tu base");
 }
 
-function createWorld() {
+function createLegacyWorld() {
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(200, 200),
     new THREE.MeshStandardMaterial({ color: "#12192d", roughness: 0.93, metalness: 0.04 }),
@@ -840,18 +850,410 @@ function createStars() {
   scene.add(stars);
 }
 
-function bindControls() {
-  const keyMap = new Map([
-    ["KeyW", "forward"],
-    ["ArrowUp", "forward"],
-    ["KeyS", "back"],
-    ["ArrowDown", "back"],
-    ["KeyA", "left"],
-    ["ArrowLeft", "left"],
-    ["KeyD", "right"],
-    ["ArrowRight", "right"],
-  ]);
+async function createWorld() {
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(120, 120),
+    new THREE.MeshStandardMaterial({ color: "#82ce69", roughness: 1 }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  platforms.push({ minX: -36, maxX: 36, minZ: -46, maxZ: 46, y: 0 });
 
+  for (let index = 0; index < 18; index += 1) {
+    const side = index % 2 ? -1 : 1;
+    createTree(side * (27 + index % 4), -40 + index * 4.5, ["#fff1a8", "#ff9dbc", "#ffffff"][index % 3]);
+    if (index % 3 === 0) await nextFrame();
+  }
+
+  const lane = new THREE.Group();
+  const belt = new THREE.Mesh(
+    new THREE.BoxGeometry(5.2, 0.24, 86),
+    new THREE.MeshStandardMaterial({ color: "#d98a50", roughness: 0.8 }),
+  );
+  belt.position.y = 0.12;
+  belt.receiveShadow = true;
+  lane.add(belt);
+  const beltTop = new THREE.Mesh(
+    new THREE.BoxGeometry(4.65, 0.08, 85.7),
+    new THREE.MeshStandardMaterial({ color: "#f7c879", roughness: 0.65 }),
+  );
+  beltTop.position.y = 0.28;
+  lane.add(beltTop);
+  for (const x of [-2.7, 2.7]) {
+    const rail = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.32, 86),
+      new THREE.MeshStandardMaterial({ color: "#fff2c7", roughness: 0.5 }),
+    );
+    rail.position.set(x, 0.27, 0);
+    lane.add(rail);
+  }
+  for (let index = 0; index < 18; index += 1) {
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.03, 1.2),
+      new THREE.MeshStandardMaterial({ color: "#fff7e2", roughness: 0.55 }),
+    );
+    stripe.position.set(0, 0.34, -41 + index * 4.8);
+    stripe.userData.offset = index * 4.8;
+    lane.add(stripe);
+  }
+  lane.userData.stripes = lane.children.filter((child) => child.userData.offset !== undefined);
+  scene.add(lane);
+  worldState.lane = lane;
+
+  const sun = new THREE.Mesh(
+    new THREE.SphereGeometry(5, 16, 12),
+    new THREE.MeshBasicMaterial({ color: "#fff1a9" }),
+  );
+  sun.position.set(-32, 34, -35);
+  scene.add(sun);
+
+  let baseIndex = 0;
+  for (const side of [-1, 1]) {
+    for (const z of BASE_ZONES) {
+      const base = createBase({
+        id: baseIndex,
+        x: side * 14,
+        z,
+        side,
+        color: BASE_COLORS[baseIndex],
+        isPlayer: baseIndex === 5,
+      });
+      bases.push(base);
+      if (base.isPlayer) worldState.homeBase = base;
+      else bots.push(createBot(base, baseIndex));
+      baseIndex += 1;
+      await nextFrame();
+    }
+  }
+  player.x = worldState.homeBase.x;
+  player.z = worldState.homeBase.z;
+  avatar.position.set(player.x, player.y, player.z);
+  await populateConveyor();
+  updateLabels();
+}
+
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => {
+    renderer.render(scene, camera);
+    resolve();
+  }));
+}
+
+function createTree(x, z, blossomColor) {
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3, 0.46, 2.6, 7),
+    new THREE.MeshStandardMaterial({ color: "#9b6946", roughness: 1 }),
+  );
+  trunk.position.set(x, 1.3, z);
+  trunk.castShadow = true;
+  scene.add(trunk);
+  const crown = new THREE.Mesh(
+    new THREE.SphereGeometry(1.7, 10, 8),
+    new THREE.MeshStandardMaterial({ color: blossomColor, roughness: 0.92 }),
+  );
+  crown.position.set(x, 3.1, z);
+  crown.scale.set(1, 0.85, 1);
+  crown.castShadow = true;
+  scene.add(crown);
+}
+
+function createBase(spec) {
+  const group = new THREE.Group();
+  group.position.set(spec.x, 0, spec.z);
+  scene.add(group);
+
+  const foundation = new THREE.Mesh(
+    new THREE.BoxGeometry(12, 0.42, 12),
+    new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.85 }),
+  );
+  foundation.position.y = 0.05;
+  foundation.castShadow = true;
+  foundation.receiveShadow = true;
+  group.add(foundation);
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(11.4, 0.12, 11.4),
+    new THREE.MeshStandardMaterial({ color: "#fff4d8", roughness: 0.9 }),
+  );
+  floor.position.y = 0.31;
+  group.add(floor);
+
+  const house = new THREE.Mesh(
+    new THREE.BoxGeometry(4.1, 2.5, 4.1),
+    new THREE.MeshStandardMaterial({ color: "#fffaf0", roughness: 0.88 }),
+  );
+  house.position.set(spec.side * -3.5, 1.6, 0);
+  house.castShadow = true;
+  group.add(house);
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(3.2, 2.4, 4),
+    new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.8 }),
+  );
+  roof.position.set(spec.side * -3.5, 3.8, 0);
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  group.add(roof);
+
+  const slots = [];
+  for (let index = 0; index < 4; index += 1) {
+    const row = Math.floor(index / 2);
+    const column = index % 2;
+    const x = spec.side * 1.8;
+    const z = (row === 0 ? -1 : 1) * (1.8 + column * 2.1);
+    const pedestal = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.88, 1.02, 0.48, 10),
+      new THREE.MeshStandardMaterial({ color: "#f2c56b", roughness: 0.72 }),
+    );
+    pedestal.position.set(x, 0.57, z);
+    group.add(pedestal);
+    const top = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.78, 0.78, 0.12, 12),
+      new THREE.MeshStandardMaterial({ color: "#fff3c9", roughness: 0.55 }),
+    );
+    top.position.set(x, 0.87, z);
+    group.add(top);
+    slots.push({ x: spec.x + x, y: 0.96, z: spec.z + z, brainrot: null, model: null });
+  }
+
+  const bank = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.1, 1.25, 0.16, 12),
+    new THREE.MeshStandardMaterial({ color: "#76c96f", roughness: 0.65 }),
+  );
+  bank.position.set(0, 0.43, spec.side * 4.35);
+  group.add(bank);
+  const bankMark = new THREE.Mesh(
+    new THREE.TorusGeometry(0.6, 0.07, 6, 16),
+    new THREE.MeshStandardMaterial({ color: "#fff7d1", roughness: 0.4 }),
+  );
+  bankMark.rotation.x = Math.PI / 2;
+  bankMark.position.set(0, 0.55, spec.side * 4.35);
+  group.add(bankMark);
+
+  const doorGroup = new THREE.Group();
+  for (const offset of [-2.1, 2.1]) {
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.24, 2.3, 8),
+      new THREE.MeshStandardMaterial({ color: "#fff1c1", roughness: 0.5 }),
+    );
+    post.position.set(offset, 1.45, spec.side * 5.35);
+    doorGroup.add(post);
+  }
+  const beam = new THREE.Mesh(
+    new THREE.BoxGeometry(4.2, 0.12, 0.12),
+    new THREE.MeshStandardMaterial({ color: "#ff667a", roughness: 0.4 }),
+  );
+  beam.position.set(0, 1.55, spec.side * 5.35);
+  doorGroup.add(beam);
+  group.add(doorGroup);
+
+  const label = createTextSprite(spec.isPlayer ? "TU BASE" : `BASE ${spec.id + 1}`, "#ffffff", spec.color);
+  label.position.set(0, 5.8, -4.7);
+  label.scale.set(5.4, 1.25, 1);
+  group.add(label);
+
+  const platform = { minX: spec.x - 6, maxX: spec.x + 6, minZ: spec.z - 6, maxZ: spec.z + 6, y: 0 };
+  platforms.push(platform);
+  const base = { ...spec, group, slots, bank, doorGroup, accrued: 0, shieldUntil: 0, platform, bot: null };
+  if (!spec.isPlayer) {
+    base.botModel = createBotModel(spec.color);
+    base.botModel.position.set(spec.side * -4.6, 0.38, 0);
+    group.add(base.botModel);
+  }
+  return base;
+}
+
+function createBot(base, index) {
+  const bot = {
+    id: index,
+    base,
+    x: base.x,
+    z: base.z,
+    speed: 2 + (index % 3) * 0.25,
+    nextAction: 8 + index * 2.2,
+    target: null,
+    mode: "idle",
+    cooldown: 0,
+  };
+  base.bot = bot;
+  return bot;
+}
+
+function createBotModel(color) {
+  const bot = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.42, 0.72, 3, 8),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.8 }),
+  );
+  body.position.y = 0.75;
+  body.castShadow = true;
+  bot.add(body);
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.43, 12, 10),
+    new THREE.MeshStandardMaterial({ color: "#ffdab5", roughness: 0.92 }),
+  );
+  head.position.y = 1.55;
+  bot.add(head);
+  const eyes = new THREE.MeshBasicMaterial({ color: "#3d382f" });
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), eyes);
+    eye.position.set(side * 0.14, 1.62, 0.37);
+    bot.add(eye);
+  }
+  const cap = new THREE.Mesh(
+    new THREE.SphereGeometry(0.46, 10, 7, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: "#fff0a8", roughness: 0.8 }),
+  );
+  cap.position.y = 1.8;
+  bot.add(cap);
+  return bot;
+}
+
+function createTextSprite(text, textColor = "#fff", background = "#785c47") {
+  const labelCanvas = document.createElement("canvas");
+  labelCanvas.width = 512;
+  labelCanvas.height = 144;
+  const context = labelCanvas.getContext("2d");
+  context.fillStyle = background;
+  context.beginPath();
+  context.roundRect(8, 8, 496, 128, 28);
+  context.fill();
+  context.strokeStyle = "rgba(255,255,255,.8)";
+  context.lineWidth = 6;
+  context.stroke();
+  context.fillStyle = textColor;
+  context.font = "bold 42px Manrope, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text, 256, 72, 470);
+  const texture = new THREE.CanvasTexture(labelCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+  sprite.userData.canvasTexture = texture;
+  return sprite;
+}
+
+async function populateConveyor() {
+  for (let index = 0; index < 7; index += 1) {
+    spawnConveyorBrainrot(-38 + index * 12);
+    await nextFrame();
+  }
+}
+
+function spawnConveyorBrainrot(z = -42) {
+  const catalog = BRAINROT_CATALOG[Math.floor(Math.random() * BRAINROT_CATALOG.length)];
+  const rarity = chooseRarity();
+  const spec = {
+    ...catalog,
+    ...rarity,
+    value: rarity.price,
+    rarity: rarity.name,
+    x: (Math.random() - 0.5) * 0.65,
+    z,
+    y: 0.42,
+  };
+  const model = createBrainrotModel(spec);
+  model.position.set(spec.x, spec.y, z);
+  scene.add(model);
+  const sign = createTextSprite(`${spec.name} · ${spec.rarity} · $${spec.price} · $${spec.income}/s`, "#fffdf1", spec.color);
+  sign.position.set(0, 2.8, 0);
+  sign.scale.set(4.9, 1.38, 1);
+  model.add(sign);
+  lootItems.push({
+    ...spec,
+    group: model,
+    sign,
+    index: lootItems.length,
+    available: true,
+    mode: "belt",
+    baseY: spec.y,
+    age: Math.random() * 3,
+    owner: null,
+    slot: null,
+  });
+}
+
+function chooseRarity() {
+  const roll = Math.random();
+  let threshold = 0;
+  for (const rarity of RARITIES) {
+    threshold += rarity.chance;
+    if (roll <= threshold) return rarity;
+  }
+  return RARITIES[0];
+}
+
+function createBrainrotModel(spec) {
+  const group = new THREE.Group();
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.86 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.58, 12, 10), bodyMaterial);
+  body.scale.set(1.15, 0.9, 0.95);
+  if (["capybara", "panda", "cat", "turtle"].includes(spec.shape)) body.scale.set(1.25, 0.82, 0.9);
+  if (["duck", "chick"].includes(spec.shape)) body.scale.set(0.9, 1.05, 0.92);
+  if (spec.shape === "cactus") body.scale.set(0.65, 1.3, 0.65);
+  if (spec.shape === "llama" || spec.shape === "rabbit") body.scale.set(0.82, 1.25, 0.8);
+  body.position.y = 0.55;
+  body.castShadow = true;
+  group.add(body);
+  const eyeMaterial = new THREE.MeshBasicMaterial({ color: spec.shape === "panda" ? "#292929" : "#443b35" });
+  const appendageMaterial = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.9 });
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), eyeMaterial);
+    eye.position.set(side * 0.2, 0.78, 0.48);
+    group.add(eye);
+    const cheek = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 8, 6),
+      new THREE.MeshStandardMaterial({ color: "#ffb0a5", roughness: 1 }),
+    );
+    cheek.position.set(side * 0.31, 0.55, 0.42);
+    group.add(cheek);
+    if (["cat", "rabbit", "duck", "chick", "panda", "axolotl"].includes(spec.shape)) {
+      const earHeight = spec.shape === "rabbit" ? 0.58 : 0.3;
+      const ear = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, earHeight, 3, 6), appendageMaterial);
+      ear.position.set(side * 0.34, spec.shape === "rabbit" ? 1.35 : 1.05, 0);
+      ear.rotation.z = side * -0.22;
+      group.add(ear);
+    }
+    if (spec.shape === "cactus") {
+      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.4, 3, 6), appendageMaterial);
+      arm.position.set(side * 0.56, 0.7, 0);
+      arm.rotation.z = side * 0.9;
+      group.add(arm);
+    }
+    const foot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.17, 8, 6),
+      new THREE.MeshStandardMaterial({ color: "#f2bf75", roughness: 0.9 }),
+    );
+    foot.scale.set(1.2, 0.55, 1.4);
+    foot.position.set(side * 0.3, 0.12, 0.2);
+    group.add(foot);
+  }
+  const nose = new THREE.Mesh(
+    new THREE.SphereGeometry(0.085, 8, 6),
+    new THREE.MeshStandardMaterial({ color: "#ff8f78", roughness: 0.8 }),
+  );
+  nose.position.set(0, 0.62, 0.57);
+  group.add(nose);
+  const smile = new THREE.Mesh(
+    new THREE.TorusGeometry(0.12, 0.025, 5, 12, Math.PI),
+    new THREE.MeshStandardMaterial({ color: "#714c43", roughness: 0.9 }),
+  );
+  smile.position.set(0, 0.47, 0.53);
+  smile.rotation.z = Math.PI;
+  group.add(smile);
+  if (spec.shape === "turtle") {
+    const shell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.56, 10, 8),
+      new THREE.MeshStandardMaterial({ color: "#367f57", roughness: 0.98 }),
+    );
+    shell.scale.set(1, 0.58, 1);
+    shell.position.set(0, 0.85, -0.16);
+    group.add(shell);
+  }
+  group.userData.bobPhase = Math.random() * Math.PI * 2;
+  return group;
+}
+
+function bindControls() {
   window.addEventListener("keydown", (event) => {
     if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
     if (event.repeat) return;
@@ -866,6 +1268,7 @@ function bindControls() {
     if (event.code === "Space") jump();
     if (event.code === "KeyE") interact();
     if (event.code === "KeyQ") activateShield();
+    if (event.code === "KeyF") punchNearestBot();
   });
 
   window.addEventListener("keyup", (event) => keys.delete(event.code));
@@ -917,6 +1320,10 @@ function bindControls() {
     audio.start().catch((error) => console.error("No se pudo iniciar el audio:", error));
     interact();
   });
+  document.querySelector("#mobile-punch").addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    punchNearestBot();
+  });
   shieldButton.addEventListener("click", activateShield);
 
   for (const button of document.querySelectorAll("[data-upgrade]")) {
@@ -940,14 +1347,15 @@ function animate() {
     return;
   }
   movePlayer(delta);
-  animateLoot(now);
+  animateLoot(now, delta);
+  updateIncome(delta, now);
+  checkRaid(now);
   animateAvatar(now);
   updateEmote(now);
   avatar.updateMatrixWorld(true);
   updateFollowAccessories();
   updateShield(now);
   checkLootProximity(now);
-  checkRaid(now);
   updateCamera(delta);
   updateLabels();
   updateHud(now);
@@ -955,51 +1363,30 @@ function animate() {
 }
 
 function movePlayer(delta) {
-  let moveX = 0;
-  let moveZ = 0;
-  if (keys.has("KeyW") || keys.has("ArrowUp")) moveX += 1;
-  if (keys.has("KeyS") || keys.has("ArrowDown")) moveX -= 1;
-  if (keys.has("KeyA") || keys.has("ArrowLeft")) moveZ += 1;
-  if (keys.has("KeyD") || keys.has("ArrowRight")) moveZ -= 1;
-
-  const moving = moveX !== 0 || moveZ !== 0;
+  const forward = Number(keys.has("KeyW") || keys.has("ArrowUp")) - Number(keys.has("KeyS") || keys.has("ArrowDown"));
+  const right = Number(keys.has("KeyD") || keys.has("ArrowRight")) - Number(keys.has("KeyA") || keys.has("ArrowLeft"));
+  const moving = forward !== 0 || right !== 0;
   if (moving) {
     stopEmote();
-    const length = Math.hypot(moveX, moveZ);
-    moveX /= length;
-    moveZ /= length;
-    player.x += moveX * player.speed * delta;
-    player.z += moveZ * player.speed * delta;
-    player.facing = Math.atan2(moveZ, moveX);
+    const length = Math.hypot(forward, right);
+    const moveForward = forward / length;
+    const moveRight = right / length;
+    const forwardX = Math.sin(cameraYaw);
+    const forwardZ = -Math.cos(cameraYaw);
+    const rightX = Math.cos(cameraYaw);
+    const rightZ = Math.sin(cameraYaw);
+    const moveX = forwardX * moveForward + rightX * moveRight;
+    const moveZ = forwardZ * moveForward + rightZ * moveRight;
+    player.x = THREE.MathUtils.clamp(player.x + moveX * player.speed * delta, -34, 34);
+    player.z = THREE.MathUtils.clamp(player.z + moveZ * player.speed * delta, -44, 44);
+    player.facing = Math.atan2(moveX, moveZ);
   }
 
-  const previouslyGrounded = player.grounded;
-  const previousY = player.y;
-  if (previouslyGrounded && !findPlatform(player.x, player.z, player.y)) {
-    player.grounded = false;
-  }
-  player.vy -= 23 * delta;
-  player.y += player.vy * delta;
-
-  if (player.vy <= 0) {
-    const landing = platforms
-      .filter((platform) => previousY >= platform.y - 0.05 && player.y <= platform.y && isWithinPlatform(platform, player.x, player.z))
-      .sort((a, b) => b.y - a.y)[0];
-    if (landing) {
-      player.y = landing.y;
-      player.vy = 0;
-      player.grounded = true;
-    }
-  }
-
-  if (player.y < -8) {
-    if (player.carried.length > 0) {
-      const lost = player.carried.pop();
-      addFeed(`Perdiste ${lost.name} al caer.`, true);
-    }
-    resetPlayerToSpawn();
-    showToast("Regresaste a tu base");
-    audio.playTone(180, 0.2, "triangle");
+  player.vy -= 22 * delta;
+  player.y = Math.max(0, player.y + player.vy * delta);
+  if (player.y === 0) {
+    player.vy = 0;
+    player.grounded = true;
   }
 }
 
@@ -1018,13 +1405,58 @@ function jump() {
   audio.playTone(330, 0.1);
 }
 
+function punchNearestBot() {
+  const now = performance.now() / 1000;
+  if (now - worldState.lastPunchAt < 0.65) return;
+  worldState.lastPunchAt = now;
+  const target = bots
+    .map((bot) => ({ bot, distance: Math.hypot(player.x - bot.x, player.z - bot.z) }))
+    .filter(({ distance }) => distance < 3)
+    .sort((a, b) => a.distance - b.distance)[0]?.bot;
+  if (!target) {
+    showToast("No hay ningún bot cerca para empujar");
+    return;
+  }
+  if (target.mode === "escaping" && target.target) {
+    const brainrot = target.target;
+    const slot = brainrot.slot;
+    if (slot && !slot.brainrot) {
+      brainrot.mode = "owned";
+      brainrot.available = true;
+      brainrot.group.visible = true;
+      brainrot.x = slot.x;
+      brainrot.y = slot.y;
+      brainrot.z = slot.z;
+      brainrot.group.position.set(slot.x, slot.y, slot.z);
+      slot.brainrot = brainrot;
+      slot.model = brainrot.group;
+    }
+  }
+  target.mode = "idle";
+  target.target = null;
+  target.x += Math.sign(target.x - player.x || 1) * 2.8;
+  target.z += Math.sign(target.z - player.z || 1) * 2.8;
+  target.base.botModel.rotation.z = -0.22;
+  setTimeout(() => {
+    if (target.base.botModel) target.base.botModel.rotation.z = 0;
+  }, 220);
+  target.nextAction = now + 5;
+  showToast("¡Empujón! El rival retrocede");
+  audio.playTone(190, 0.11, "triangle");
+}
+
 function interact() {
   const now = performance.now() / 1000;
   if (now - worldState.lastInteraction < 0.25) return;
   worldState.lastInteraction = now;
 
-  if (worldState.closestLoot && player.carried.length < player.capacity) {
-    collectLoot(worldState.closestLoot);
+  if (worldState.closestLoot?.mode === "belt") {
+    purchaseBrainrot(worldState.closestLoot);
+    return;
+  }
+
+  if (worldState.closestLoot?.mode === "owned" && worldState.closestLoot.owner !== worldState.homeBase) {
+    stealBrainrot(worldState.closestLoot);
     return;
   }
 
@@ -1033,68 +1465,161 @@ function interact() {
     return;
   }
 
-  if (player.carried.length >= player.capacity) {
-    showToast("Mochila llena: vuelve a tu base");
+  if (worldState.nearBank) {
+    collectBank();
+    return;
+  }
+
+  if (worldState.nearestBase && worldState.nearestBase !== worldState.homeBase) {
+    showToast(worldState.nearestBase.shieldUntil > performance.now() / 1000 ? "La puerta está protegida" : "Busca un Brainrot libre para robar");
   } else {
-    showToast("Acércate a un hallazgo luminoso");
+    showToast("Acércate a la pasarela o a una base");
   }
 }
 
 function checkLootProximity(now) {
   worldState.closestLoot = null;
-  let closestDistance = 1.65;
-
+  worldState.nearestBase = null;
+  let closestDistance = 3.2;
   for (const item of lootItems) {
-    if (!item.available) {
-      if (now >= item.respawnAt) respawnLoot(item);
-      continue;
-    }
-    item.group.visible = true;
+    if (!item.available || !["belt", "owned"].includes(item.mode)) continue;
+    if (item.reservedBy?.target === item) continue;
+    if (item.mode === "owned" && (item.owner === worldState.homeBase || item.owner?.shieldUntil > now)) continue;
     const distance = Math.hypot(player.x - item.x, player.z - item.z);
-    if (distance < closestDistance && Math.abs(player.y - item.y) < 2.2) {
+    if (distance < closestDistance && Math.abs(player.y - item.y) < 2.5) {
       closestDistance = distance;
       worldState.closestLoot = item;
     }
   }
 
-  worldState.nearBase = Math.hypot(player.x, player.z) < 3.7 && Math.abs(player.y) < 1;
-  const canInteract = Boolean(worldState.closestLoot && player.carried.length < player.capacity) || (worldState.nearBase && player.carried.length > 0);
+  let baseDistance = Infinity;
+  for (const base of bases) {
+    const distance = Math.hypot(player.x - base.x, player.z - base.z);
+    if (distance < baseDistance) {
+      baseDistance = distance;
+      worldState.nearestBase = base;
+    }
+  }
+  worldState.nearBase = Boolean(worldState.homeBase && Math.hypot(player.x - worldState.homeBase.x, player.z - worldState.homeBase.z) < 7);
+  const bankX = worldState.homeBase?.x ?? 0;
+  const bankZ = (worldState.homeBase?.z ?? 0) + (worldState.homeBase?.side ?? 1) * 4.35;
+  worldState.nearBank = Math.hypot(player.x - bankX, player.z - bankZ) < 2.5;
+  const canInteract = Boolean(worldState.closestLoot || (worldState.nearBase && player.carried.length) || worldState.nearBank);
   prompt.classList.toggle("is-visible", canInteract);
-  prompt.querySelector("span").textContent = worldState.nearBase && player.carried.length > 0 ? "Depositar en la base" : "Recoger hallazgo";
+  const promptText = worldState.closestLoot?.mode === "belt"
+    ? `Comprar ${worldState.closestLoot.name} · $${worldState.closestLoot.price}`
+    : worldState.closestLoot?.mode === "owned"
+      ? `Robar ${worldState.closestLoot.name}`
+      : worldState.nearBase && player.carried.length
+        ? "Colocar en un pedestal"
+        : worldState.nearBank
+          ? `Recoger $${Math.floor(worldState.homeBase.accrued)}`
+          : "Interactuar";
+  prompt.querySelector("span").textContent = promptText;
 }
 
-function collectLoot(item) {
+function purchaseBrainrot(item, buyer = worldState.homeBase) {
+  const base = buyer ?? worldState.homeBase;
+  const slot = base.slots.find((candidate) => !candidate.brainrot);
+  if (!slot) {
+    if (base === worldState.homeBase) showToast("No tienes pedestales libres");
+    return false;
+  }
+  if (base === worldState.homeBase && player.cash < item.price) {
+    showToast(`Necesitas $${item.price} para comprarlo`);
+    return false;
+  }
+  if (base === worldState.homeBase) {
+    player.cash -= item.price;
+    showToast(`${item.name} camina hacia tu base`);
+    addFeed(`Compraste ${item.name} (${item.rarity}).`, false);
+    audio.playTone(523, 0.14);
+  } else {
+    base.bot.wallet = (base.bot.wallet ?? 220) - item.price;
+  }
+  item.mode = "delivery";
+  item.owner = base;
+  item.slot = slot;
   item.available = false;
-  item.respawnAt = performance.now() / 1000 + 24;
-  item.group.visible = false;
-  player.carried.push({ name: item.name, value: item.value, color: item.color, shape: item.shape });
-  syncCarriedModels();
-  updateMission();
-  addFeed(`Recogiste ${item.name} · valor ${item.value} créditos.`, false);
-  showToast(`${item.name} guardado`);
-  audio.playTone(660, 0.12);
+  item.group.remove(item.sign);
+  slot.brainrot = item;
+  if (base.bot) base.bot.mode = "return";
+  return true;
 }
 
-function respawnLoot(item) {
-  item.available = true;
-  item.group.visible = true;
-  item.respawnAt = 0;
-  addFeed(`Un hallazgo reapareció: ${item.name}.`, false);
+function stealBrainrot(item) {
+  if (player.carried.length >= player.capacity) {
+    showToast("Las manos están ocupadas: vuelve a tu base");
+    return;
+  }
+  if (item.owner?.shieldUntil > performance.now() / 1000) {
+    showToast("La puerta láser está activa");
+    return;
+  }
+  const slot = item.slot;
+  if (slot) {
+    slot.brainrot = null;
+    slot.model = null;
+  }
+  scene.remove(item.group);
+  disposeObject(item.group);
+  player.carried.push({ ...item, group: undefined, slot: undefined, owner: undefined, wasStolen: true });
+  syncCarriedModels();
+  item.available = false;
+  item.mode = "stolen";
+  addFeed(`¡Robaste ${item.name}! Llévalo a tu base.`, false);
+  showToast(`${item.name} robado`);
+  audio.playTone(760, 0.13);
 }
 
 function depositLoot() {
-  const amount = player.carried.reduce((sum, item) => sum + item.value, 0);
-  if (amount <= 0) return;
-  player.cash += amount;
-  const count = player.carried.length;
-  void submitLeaderboardScore(count);
-  player.carried = [];
+  const slot = worldState.homeBase.slots.find((candidate) => !candidate.brainrot);
+  if (!slot) {
+    showToast("No tienes pedestales libres");
+    return;
+  }
+  const stolen = player.carried.shift();
+  const item = {
+    ...stolen,
+    group: createBrainrotModel(stolen),
+    index: lootItems.length,
+    mode: "owned",
+    available: true,
+    owner: worldState.homeBase,
+    slot,
+    age: 0,
+    x: slot.x,
+    y: slot.y,
+    z: slot.z,
+  };
+  item.group.position.set(slot.x, slot.y, slot.z);
+  scene.add(item.group);
+  slot.brainrot = item;
+  slot.model = item.group;
+  lootItems.push(item);
+  if (stolen.wasStolen) {
+    worldState.totalStolen = (worldState.totalStolen ?? 0) + 1;
+    void submitLeaderboardScore(1);
+  }
   syncCarriedModels();
   updateHud();
   updateMission();
-  addFeed(`Vendiste ${count} hallazgo${count === 1 ? "" : "s"} por ${amount} créditos.`, false);
-  showToast(`+${amount} créditos`);
-  audio.playTone(523.25, 0.18);
+  addFeed(`${item.name} ocupa un pedestal y genera $${item.income}/s.`, false);
+  showToast(`${item.name} instalado`);
+  audio.playTone(659, 0.18);
+}
+
+function collectBank() {
+  const amount = Math.floor(worldState.homeBase.accrued);
+  if (!amount) {
+    showToast("Tus Brainrots aún están ahorrando");
+    return;
+  }
+  worldState.homeBase.accrued -= amount;
+  player.cash += amount;
+  updateHud();
+  showToast(`¡Recogiste $${amount}!`);
+  audio.playTone(784, 0.18);
 }
 
 async function submitLeaderboardScore(count) {
@@ -1114,9 +1639,9 @@ function syncCarriedModels() {
   carriedModels.length = 0;
 
   player.carried.slice(-3).forEach((item, index) => {
-    const model = createCollectible(item);
-    model.scale.setScalar(0.28);
-    model.position.set((index - 1) * 0.35, 1.9 + index * 0.06, -0.25);
+    const model = createBrainrotModel(item);
+    model.scale.setScalar(0.42);
+    model.position.set((index - 0.5) * 0.5, 1.5 + index * 0.05, 0.2);
     avatar.add(model);
     carriedModels.push(model);
   });
@@ -1169,20 +1694,21 @@ function activateShield() {
   }
   shield.activeUntil = now + shield.duration;
   shield.cooldownUntil = now + shield.duration + shield.cooldown;
-  laserShield.visible = true;
-  addFeed("Escudo láser activo: tu base está protegida.", false);
-  showToast("Escudo láser activado");
+  worldState.homeBase.shieldUntil = shield.activeUntil;
+  updateShieldVisual(worldState.homeBase, true);
+  addFeed("Puerta temporal activa: tu base está protegida.", false);
+  showToast("Puerta segura activada");
 }
 
 function updateShield(now) {
   const active = now < shield.activeUntil;
-  laserShield.visible = active;
-  laserShield.children.forEach((beam, index) => {
-    if (beam.material) beam.material.opacity = 0.35 + Math.sin(now * 8 + index) * 0.16;
-  });
+  if (worldState.homeBase) {
+    worldState.homeBase.shieldUntil = shield.activeUntil;
+    updateShieldVisual(worldState.homeBase, active);
+  }
 
   if (active) {
-    shieldState.textContent = "Base protegida";
+    shieldState.textContent = "Puerta protegida";
     shieldTimer.textContent = `Se desactiva en ${Math.ceil(shield.activeUntil - now)}s`;
     shieldMeter.style.width = `${Math.max(0, ((shield.activeUntil - now) / shield.duration) * 100)}%`;
     shieldButton.disabled = true;
@@ -1196,39 +1722,192 @@ function updateShield(now) {
     shieldButton.innerHTML = `RECARGA <kbd>Q</kbd>`;
   } else {
     shieldState.textContent = "Escudo listo";
-    shieldTimer.textContent = "Protege tus créditos de los saqueadores";
+    shieldTimer.textContent = "Protege tus pedestales de los ladrones";
     shieldMeter.style.width = "100%";
     shieldButton.disabled = false;
     shieldButton.innerHTML = `ACTIVAR <kbd>Q</kbd>`;
   }
 }
 
+function updateShieldVisual(base, active) {
+  if (!base?.doorGroup) return;
+  base.doorGroup.visible = true;
+  base.doorGroup.children.at(-1).material.color.set(active ? "#69c8ff" : "#ff667a");
+  base.doorGroup.children.at(-1).material.transparent = active;
+  base.doorGroup.children.at(-1).material.opacity = active ? 0.72 : 0.32;
+}
+
 function checkRaid(now) {
   if (!worldState.startAt || now < worldState.nextRaidAt) return;
-  const hasShield = now < shield.activeUntil;
-  if (hasShield) {
-    addFeed("¡El escudo repelió a un saqueador! Tu saldo está a salvo.", false);
-    showToast("Saqueador repelido");
-  } else if (player.cash > 0) {
-    const lost = Math.min(20, player.cash);
-    player.cash -= lost;
-    addFeed(`Un saqueador escapó con ${lost} créditos. Activa el escudo con Q.`, true);
-    showToast(`Perdiste ${lost} créditos`);
-  } else {
-    addFeed("Un saqueador rondó tu base vacía. ¡Activa el escudo con Q!", true);
+  const raider = bots.find((bot) => bot.mode === "idle");
+  if (raider) {
+    raider.mode = "raid";
+    addFeed("¡Un rival se acerca a tu base! Pulsa F para empujarlo.", true);
   }
-  worldState.nextRaidAt += 35;
+  worldState.nextRaidAt += 22;
   updateHud(now);
 }
 
-function animateLoot(now) {
+function updateIncome(delta, now) {
+  for (const base of bases) {
+    const income = base.slots.reduce((sum, slot) => sum + (slot.brainrot?.income ?? 0), 0);
+    base.accrued += income * delta;
+    if (base.bot) base.bot.wallet = Math.min(5000, (base.bot.wallet ?? 220) + income * delta * 0.35);
+  }
+
+  if (worldState.botPurchaseAt == null) worldState.botPurchaseAt = now + 3;
+  if (now >= worldState.botPurchaseAt) {
+    worldState.botPurchaseAt = now + 9;
+    for (const bot of bots) {
+      if (bot.mode !== "idle") continue;
+      const target = lootItems.find(
+        (item) => item.mode === "belt" && !item.reservedBy && item.price <= (bot.wallet ?? 220),
+      );
+      if (!target || !bot.base.slots.some((slot) => !slot.brainrot)) continue;
+      bot.mode = "buying";
+      bot.target = target;
+      target.reservedBy = bot;
+    }
+  }
+
+  for (const bot of bots) updateBot(bot, delta, now);
+}
+
+function updateBot(bot, delta, now) {
+  const model = bot.base.botModel;
+  const walkTo = (x, z) => {
+    const dx = x - bot.x;
+    const dz = z - bot.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > 0.75) {
+      bot.x += (dx / distance) * bot.speed * delta;
+      bot.z += (dz / distance) * bot.speed * delta;
+      model.rotation.y = Math.atan2(dx, dz);
+    }
+    model.position.set(bot.x - bot.base.x, 0.38 + Math.abs(Math.sin(now * 9 + bot.id)) * 0.06, bot.z - bot.base.z);
+    return distance;
+  };
+
+  if (bot.mode === "buying" && bot.target) {
+    if (bot.target.mode !== "belt" || bot.target.reservedBy !== bot) {
+      bot.mode = "idle";
+      bot.target = null;
+      bot.nextAction = now + 4;
+      return;
+    }
+    if (walkTo(0, bot.target.z) < 1.8) {
+      const bought = bot.target;
+      bot.target = null;
+      bot.mode = "idle";
+      bot.nextAction = now + 10;
+      purchaseBrainrot(bought, bot.base);
+    }
+  } else if (bot.mode === "return") {
+    if (walkTo(bot.base.x, bot.base.z) < 1) {
+      bot.mode = "idle";
+      bot.nextAction = now + 12;
+    }
+  } else if (bot.mode === "raid") {
+    if (walkTo(worldState.homeBase.x, worldState.homeBase.z) < 7) {
+      if (now < worldState.homeBase.shieldUntil) {
+        addFeed("¡La puerta repelió al rival!", false);
+        bot.mode = "escaping";
+        bot.target = null;
+      } else {
+        const slot = worldState.homeBase.slots.find((candidate) => candidate.brainrot);
+        if (slot) {
+          bot.target = slot.brainrot;
+          slot.brainrot.available = false;
+          slot.brainrot.mode = "raided";
+          slot.brainrot.group.visible = false;
+          slot.brainrot = null;
+          bot.mode = "escaping";
+          addFeed(`¡${bot.target.name} fue robado de tu base!`, true);
+        } else {
+          bot.mode = "escaping";
+          showToast("El rival no encontró Brainrots");
+        }
+      }
+    }
+  } else if (bot.mode === "escaping") {
+    const distance = walkTo(bot.base.x, bot.base.z);
+    if (distance < 1) {
+      if (bot.target) {
+        const slot = bot.base.slots.find((candidate) => !candidate.brainrot);
+        if (slot) {
+          bot.target.owner = bot.base;
+          bot.target.slot = slot;
+          bot.target.mode = "owned";
+          bot.target.available = true;
+          bot.target.x = slot.x;
+          bot.target.y = slot.y;
+          bot.target.z = slot.z;
+          bot.target.group.position.set(slot.x, slot.y, slot.z);
+          bot.target.group.visible = true;
+          slot.brainrot = bot.target;
+          slot.model = bot.target.group;
+        }
+        bot.target = null;
+      }
+      bot.mode = "idle";
+      bot.nextAction = now + 18;
+    }
+  } else if (bot.mode === "idle") {
+    walkTo(bot.base.x, bot.base.z);
+  }
+}
+
+function animateLoot(now, delta) {
+  if (worldState.lane?.userData.stripes) {
+    for (const stripe of worldState.lane.userData.stripes) {
+      stripe.position.z = ((stripe.userData.offset + now * 4) % 4.8) - 2.4;
+    }
+  }
   for (const item of lootItems) {
-    if (!item.available) continue;
-    item.group.position.y = item.baseY + Math.sin(now * 2.3 + item.index * 1.7) * 0.16;
-    item.group.rotation.y = now * 0.7 + item.index;
-    item.group.rotation.z = Math.sin(now * 1.3 + item.index) * 0.06;
-    const scale = worldState.closestLoot === item ? 1.12 + Math.sin(now * 8) * 0.04 : 1;
-    item.group.scale.setScalar(scale);
+    if (item.mode === "belt") {
+      if (item.reservedBy && item.reservedBy.target !== item) continue;
+      item.z += 4.2 * delta;
+      if (item.z > 42) {
+        item.z = -42;
+        const catalog = BRAINROT_CATALOG[Math.floor(Math.random() * BRAINROT_CATALOG.length)];
+        const rarity = chooseRarity();
+        Object.assign(item, catalog, rarity, { value: rarity.price, rarity: rarity.name });
+        if (item.sign?.userData.canvasTexture) item.sign.userData.canvasTexture.dispose();
+        item.group.remove(item.sign);
+        item.sign = createTextSprite(`${item.name} · ${item.rarity} · $${item.price} · $${item.income}/s`, "#fffdf1", item.color);
+        item.sign.position.set(0, 2.8, 0);
+        item.sign.scale.set(4.9, 1.38, 1);
+        item.group.add(item.sign);
+      }
+      item.x = Math.sin(now * 0.8 + item.index) * 0.25;
+      item.group.position.set(item.x, item.baseY + Math.sin(now * 3 + item.index) * 0.1, item.z);
+      item.group.rotation.y = Math.PI + Math.sin(now * 0.8) * 0.08;
+      item.group.rotation.z = Math.sin(now * 2 + item.index) * 0.035;
+    } else if (item.mode === "delivery") {
+      const dx = item.slot.x - item.x;
+      const dz = item.slot.z - item.z;
+      const distance = Math.hypot(dx, dz);
+      const step = Math.min(distance, 3.2 * delta);
+      item.x += (dx / (distance || 1)) * step;
+      item.z += (dz / (distance || 1)) * step;
+      item.group.position.set(item.x, item.y + Math.sin(now * 8) * 0.04, item.z);
+      item.group.rotation.y = Math.atan2(dx, dz);
+      if (distance < 0.25) {
+        item.mode = "owned";
+        item.available = true;
+        item.slot.model = item.group;
+      }
+    } else if (item.mode === "owned" && item.group.visible) {
+      item.group.position.y = item.y + Math.sin(now * 2 + item.index) * 0.08;
+      item.group.rotation.y = Math.sin(now * 0.5 + item.index) * 0.08;
+    }
+    if (item.group.visible) {
+      const scale = worldState.closestLoot === item ? 1.12 + Math.sin(now * 8) * 0.035 : 1;
+      if (item.mode !== "owned") item.group.scale.setScalar(scale);
+    }
+  }
+  for (const base of bases) {
+    base.bank.material.color.set(base === worldState.homeBase && base.accrued >= 1 ? "#ffcd5e" : "#76c96f");
   }
 }
 
@@ -1248,17 +1927,29 @@ function animateAvatar(now) {
 }
 
 function updateCamera(delta) {
-  const offset = new THREE.Vector3(-10.5, 9.5, 15);
-  offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraYaw);
-  offset.y = Math.max(5, offset.y - cameraPitch * 10);
-  const target = new THREE.Vector3(player.x, player.y, player.z).add(offset);
-  camera.position.lerp(target, 1 - Math.pow(0.001, delta));
-  camera.lookAt(player.x + 3.5, player.y + 0.5, player.z);
+  const distance = 6.4;
+  const horizontalDistance = Math.cos(cameraPitch) * distance;
+  const target = new THREE.Vector3(
+    player.x + Math.sin(cameraYaw) * horizontalDistance,
+    player.y + 2.25 + Math.sin(cameraPitch) * distance,
+    player.z + Math.cos(cameraYaw) * horizontalDistance,
+  );
+  const follow = 1 - Math.pow(0.0004, delta);
+  camera.position.lerp(target, follow);
+  const look = new THREE.Vector3(
+    player.x - Math.sin(cameraYaw) * 1.4,
+    player.y + 1.45,
+    player.z - Math.cos(cameraYaw) * 1.4,
+  );
+  camera.lookAt(look);
 }
 
 function updateLabels() {
-  placeLabel(document.querySelector(".label-base"), new THREE.Vector3(0, 2.8, 0));
-  placeLabel(document.querySelector(".label-vault"), new THREE.Vector3(25, 3.4, 0));
+  const homeBase = worldState.homeBase;
+  if (homeBase) {
+    placeLabel(document.querySelector(".label-base"), new THREE.Vector3(homeBase.x, 5, homeBase.z - 4.7));
+  }
+  placeLabel(document.querySelector(".label-vault"), new THREE.Vector3(0, 2.5, -12));
 }
 
 function placeLabel(element, position) {
@@ -1279,14 +1970,12 @@ function placeLabel(element, position) {
 function updateHud(now = performance.now() / 1000) {
   moneyValue.textContent = `$${player.cash}`;
   shopMoney.textContent = `$${player.cash}`;
-  bagValue.innerHTML = `${player.carried.length} <small>/ ${player.capacity}</small>`;
-  bagDetail.textContent = player.carried.length
-    ? `Valor: ${player.carried.reduce((sum, item) => sum + item.value, 0)} créditos`
-    : "Vacía · vuelve a tu base";
+  const homeIncome = worldState.homeBase?.slots.reduce((sum, slot) => sum + (slot.brainrot?.income ?? 0), 0) ?? 0;
+  bagValue.innerHTML = `${Math.floor(homeIncome)} <small>$/s</small>`;
+  bagDetail.textContent = `Banco: $${Math.floor(worldState.homeBase?.accrued ?? 0)} · ${player.carried.length} en mano`;
 
-  const totalLoot = lootSpecs.length;
-  const collected = lootItems.filter((item) => !item.available).length;
-  missionProgress.style.width = `${Math.min(100, (collected / totalLoot) * 100)}%`;
+  const filledSlots = worldState.homeBase?.slots.filter((slot) => slot.brainrot).length ?? 0;
+  missionProgress.style.width = `${(filledSlots / 4) * 100}%`;
   updateMission();
 
   for (const button of document.querySelectorAll("[data-upgrade]")) {
@@ -1304,15 +1993,18 @@ function updateHud(now = performance.now() / 1000) {
 }
 
 function updateMission() {
-  if (player.carried.length > 0) {
-    missionTitle.textContent = "Vuelve a tu base";
-    missionDetail.textContent = `${player.carried.length} hallazgo${player.carried.length === 1 ? "" : "s"} en la mochila · pulsa E`;
-  } else if (lootItems.some((item) => item.available)) {
-    missionTitle.textContent = "Encuentra una criatura";
-    missionDetail.textContent = "Sigue las plataformas luminosas";
+  if (player.carried.length > 0 && worldState.nearBase) {
+    missionTitle.textContent = "Coloca tu Brainrot";
+    missionDetail.textContent = "Acércate a un pedestal libre y pulsa E";
+  } else if (player.carried.length > 0) {
+    missionTitle.textContent = "¡Vuelve a tu base!";
+    missionDetail.textContent = `${player.carried[0].name} te sigue · pulsa E en un pedestal`;
+  } else if (worldState.homeBase?.slots.every((slot) => slot.brainrot)) {
+    missionTitle.textContent = "¡Base completa!";
+    missionDetail.textContent = `Recoge $${Math.floor(worldState.homeBase.accrued)} del botón verde`;
   } else {
-    missionTitle.textContent = "Ruta despejada";
-    missionDetail.textContent = "Los hallazgos vuelven pronto";
+    missionTitle.textContent = "¡Compra en la pasarela!";
+    missionDetail.textContent = "Acércate a un Brainrot y pulsa E · roba en bases rivales";
   }
 }
 
