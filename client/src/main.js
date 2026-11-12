@@ -180,6 +180,8 @@ async function boot() {
   renderer.setAnimationLoop(animate);
 }
 
+void boot();
+
 function configureBoxity() {
   boxityEnvironment = Legion.SDK.environment();
   if (!boxityEnvironment?.apiUrl || !boxityEnvironment?.staticUrl) {
