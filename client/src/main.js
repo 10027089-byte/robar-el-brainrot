@@ -34,6 +34,7 @@ const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 220);
 camera.position.set(0, 5, 7);
 let cameraSensitivity = 1;
 let cameraYaw = 0;
+let cameraTargetYaw = 0;
 let cameraPitch = 0.15;
 let cameraDrag = null;
 let boxityEnvironment = null;
@@ -906,99 +907,173 @@ function createBase(spec) {
   scene.add(group);
 
   const foundation = new THREE.Mesh(
-    new THREE.BoxGeometry(12, 0.42, 12),
-    new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.85 }),
+    new THREE.BoxGeometry(12, 0.42, 13),
+    new THREE.MeshStandardMaterial({ color: "#e5bd7c", roughness: 0.85 }),
   );
   foundation.position.y = 0.05;
   foundation.castShadow = true;
   foundation.receiveShadow = true;
   group.add(foundation);
   const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(11.4, 0.12, 11.4),
+    new THREE.BoxGeometry(11.4, 0.12, 12.4),
     new THREE.MeshStandardMaterial({ color: "#fff4d8", roughness: 0.9 }),
   );
   floor.position.y = 0.31;
   group.add(floor);
 
-  const house = new THREE.Mesh(
-    new THREE.BoxGeometry(4.1, 2.5, 4.1),
-    new THREE.MeshStandardMaterial({ color: "#fffaf0", roughness: 0.88 }),
-  );
-  house.position.set(spec.side * -3.5, 1.6, 0);
-  house.castShadow = true;
-  group.add(house);
+  const columnMaterial = new THREE.MeshStandardMaterial({ color: "#fffaf0", roughness: 0.72 });
+  for (const x of [-5.35, 5.35]) {
+    for (const z of [-5.85, 5.85]) {
+      const column = new THREE.Mesh(new THREE.BoxGeometry(0.48, 4.35, 0.48), columnMaterial);
+      column.position.set(x, 2.46, z);
+      column.castShadow = true;
+      group.add(column);
+      const footing = new THREE.Mesh(
+        new THREE.BoxGeometry(0.72, 0.22, 0.72),
+        new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.6 }),
+      );
+      footing.position.set(x, 0.53, z);
+      group.add(footing);
+    }
+  }
+
   const roof = new THREE.Mesh(
-    new THREE.ConeGeometry(3.2, 2.4, 4),
-    new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.8 }),
+    new THREE.BoxGeometry(12.4, 0.48, 13.4),
+    new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.74 }),
   );
-  roof.position.set(spec.side * -3.5, 3.8, 0);
-  roof.rotation.y = Math.PI / 4;
+  roof.position.y = 4.9;
   roof.castShadow = true;
   group.add(roof);
+  const roofTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(12.1, 0.15, 13.1),
+    new THREE.MeshStandardMaterial({ color: "#fff0c7", roughness: 0.65 }),
+  );
+  roofTrim.position.y = 4.58;
+  group.add(roofTrim);
+
+  const sign = createBaseSign(spec.isPlayer ? "TU BASE" : "BASE LIBRE", spec.color);
+  sign.position.set(-spec.side * 5.82, 4.05, 0);
+  sign.rotation.y = -spec.side * Math.PI / 2;
+  group.add(sign);
 
   const slots = [];
-  for (let index = 0; index < 4; index += 1) {
-    const row = Math.floor(index / 2);
-    const column = index % 2;
-    const x = spec.side * 1.8;
-    const z = (row === 0 ? -1 : 1) * (1.8 + column * 2.1);
-    const pedestal = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.88, 1.02, 0.48, 10),
-      new THREE.MeshStandardMaterial({ color: "#f2c56b", roughness: 0.72 }),
-    );
-    pedestal.position.set(x, 0.57, z);
-    group.add(pedestal);
-    const top = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.78, 0.78, 0.12, 12),
-      new THREE.MeshStandardMaterial({ color: "#fff3c9", roughness: 0.55 }),
-    );
-    top.position.set(x, 0.87, z);
-    group.add(top);
-    slots.push({ x: spec.x + x, y: 0.96, z: spec.z + z, brainrot: null, model: null });
+  const pedestalMaterial = new THREE.MeshStandardMaterial({ color: "#e7bd72", roughness: 0.58, metalness: 0.12 });
+  const pedestalGlowMaterial = new THREE.MeshStandardMaterial({
+    color: "#bbffe0",
+    emissive: "#56ffae",
+    emissiveIntensity: 0.75,
+    roughness: 0.34,
+  });
+  for (let row = 0; row < 2; row += 1) {
+    for (let column = 0; column < 4; column += 1) {
+      const x = -spec.side * (3.45 - column * 2.15);
+      const z = row === 0 ? -2.75 : 2.75;
+      const pedestal = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.78, 0.9, 0.45, 12),
+        pedestalMaterial,
+      );
+      pedestal.position.set(x, 0.6, z);
+      pedestal.castShadow = true;
+      group.add(pedestal);
+      const top = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.7, 0.7, 0.12, 16),
+        pedestalGlowMaterial,
+      );
+      top.position.set(x, 0.885, z);
+      group.add(top);
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.72, 0.035, 6, 24),
+        new THREE.MeshBasicMaterial({ color: "#73ffc0" }),
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(x, 0.96, z);
+      group.add(ring);
+      slots.push({ x: spec.x + x, y: 0.99, z: spec.z + z, brainrot: null, model: null });
+    }
   }
 
   const bank = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.1, 1.25, 0.16, 12),
-    new THREE.MeshStandardMaterial({ color: "#76c96f", roughness: 0.65 }),
+    new THREE.BoxGeometry(2.5, 0.16, 2.1),
+    new THREE.MeshStandardMaterial({
+      color: "#62ff87",
+      emissive: "#19db58",
+      emissiveIntensity: 0.55,
+      roughness: 0.34,
+    }),
   );
-  bank.position.set(0, 0.43, spec.side * 4.35);
+  bank.position.set(-spec.side * 4.05, 0.45, 0);
   group.add(bank);
   const bankMark = new THREE.Mesh(
-    new THREE.TorusGeometry(0.6, 0.07, 6, 16),
-    new THREE.MeshStandardMaterial({ color: "#fff7d1", roughness: 0.4 }),
+    new THREE.TorusGeometry(0.55, 0.07, 6, 20),
+    new THREE.MeshBasicMaterial({ color: "#efffc0" }),
   );
   bankMark.rotation.x = Math.PI / 2;
-  bankMark.position.set(0, 0.55, spec.side * 4.35);
+  bankMark.position.set(-spec.side * 4.05, 0.55, 0);
   group.add(bankMark);
 
-  const doorGroup = new THREE.Group();
-  for (const offset of [-2.1, 2.1]) {
-    const post = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.24, 2.3, 8),
-      new THREE.MeshStandardMaterial({ color: "#fff1c1", roughness: 0.5 }),
-    );
-    post.position.set(offset, 1.45, spec.side * 5.35);
-    doorGroup.add(post);
+  const barrier = new THREE.Group();
+  const postMaterial = new THREE.MeshStandardMaterial({ color: "#4b5360", metalness: 0.68, roughness: 0.32 });
+  for (const z of [-4.25, 4.25]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 2.55, 10), postMaterial);
+    post.position.set(-spec.side * 5.1, 1.62, z);
+    post.castShadow = true;
+    barrier.add(post);
   }
-  const beam = new THREE.Mesh(
-    new THREE.BoxGeometry(4.2, 0.12, 0.12),
-    new THREE.MeshStandardMaterial({ color: "#ff667a", roughness: 0.4 }),
-  );
-  beam.position.set(0, 1.55, spec.side * 5.35);
-  doorGroup.add(beam);
-  group.add(doorGroup);
+  const laserMaterial = new THREE.MeshStandardMaterial({
+    color: "#ff5876",
+    emissive: "#ff174d",
+    emissiveIntensity: 2,
+    transparent: true,
+    opacity: 0.82,
+  });
+  for (const y of [0.9, 1.62, 2.34]) {
+    const laser = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.08, 8.2), laserMaterial);
+    laser.position.set(-spec.side * 5.1, y, 0);
+    barrier.add(laser);
+  }
+  group.add(barrier);
 
-  const label = createTextSprite(spec.isPlayer ? "TU BASE" : "BASE LIBRE", "#ffffff", spec.color);
-  label.position.set(0, 5.8, -4.7);
-  label.scale.set(5.4, 1.25, 1);
-  group.add(label);
+  const shieldDisplay = createTextSprite("ESCUDO 01:00", "#ffffff", "#4b5360", 28);
+  shieldDisplay.position.set(-spec.side * 5.65, 3.05, 0);
+  shieldDisplay.scale.set(3.5, 0.9, 1);
+  group.add(shieldDisplay);
 
-  const platform = { minX: spec.x - 6, maxX: spec.x + 6, minZ: spec.z - 6, maxZ: spec.z + 6, y: 0 };
+  const platform = { minX: spec.x - 6, maxX: spec.x + 6, minZ: spec.z - 6.5, maxZ: spec.z + 6.5, y: 0 };
   platforms.push(platform);
-  return { ...spec, group, slots, bank, doorGroup, accrued: 0, platform };
+  return { ...spec, group, slots, bank, shieldDisplay, shieldTimeLeft: 60, lastShieldSecond: 60, accrued: 0, platform };
 }
 
-function createTextSprite(text, textColor = "#fff", background = "#785c47") {
+function createBaseSign(text, color) {
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.4, 1.35),
+    new THREE.MeshBasicMaterial({ map: createTextTexture(text, "#ffffff", color, 48), side: THREE.DoubleSide }),
+  );
+  return sign;
+}
+
+function createTextTexture(text, textColor, background, fontSize) {
+  const labelCanvas = document.createElement("canvas");
+  labelCanvas.width = 768;
+  labelCanvas.height = 192;
+  const context = labelCanvas.getContext("2d");
+  context.fillStyle = background;
+  context.beginPath();
+  context.roundRect(8, 8, 752, 176, 30);
+  context.fill();
+  context.strokeStyle = "rgba(255,255,255,.9)";
+  context.lineWidth = 8;
+  context.stroke();
+  context.fillStyle = textColor;
+  context.font = `800 ${fontSize}px Manrope, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text, 384, 96, 720);
+  const texture = new THREE.CanvasTexture(labelCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createTextSprite(text, textColor = "#fff", background = "#785c47", fontSize = 42) {
   const labelCanvas = document.createElement("canvas");
   labelCanvas.width = 512;
   labelCanvas.height = 144;
@@ -1011,7 +1086,7 @@ function createTextSprite(text, textColor = "#fff", background = "#785c47") {
   context.lineWidth = 6;
   context.stroke();
   context.fillStyle = textColor;
-  context.font = "bold 42px Manrope, sans-serif";
+  context.font = `bold ${fontSize}px Manrope, sans-serif`;
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(text, 256, 72, 470);
@@ -1019,6 +1094,10 @@ function createTextSprite(text, textColor = "#fff", background = "#785c47") {
   texture.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
   sprite.userData.canvasTexture = texture;
+  sprite.userData.canvas = labelCanvas;
+  sprite.userData.textColor = textColor;
+  sprite.userData.background = background;
+  sprite.userData.fontSize = fontSize;
   return sprite;
 }
 
@@ -1221,13 +1300,14 @@ function bindControls() {
   window.addEventListener("keyup", (event) => keys.delete(event.code));
   window.addEventListener("blur", () => keys.clear());
   canvas.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
     audio.start().catch((error) => console.error("No se pudo iniciar el audio:", error));
     cameraDrag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
     canvas.setPointerCapture(event.pointerId);
   });
   canvas.addEventListener("pointermove", (event) => {
     if (!cameraDrag || cameraDrag.pointerId !== event.pointerId) return;
-    cameraYaw += (event.clientX - cameraDrag.x) * 0.004 * cameraSensitivity;
+    cameraTargetYaw += (event.clientX - cameraDrag.x) * 0.004 * cameraSensitivity;
     cameraPitch = THREE.MathUtils.clamp(
       cameraPitch + (event.clientY - cameraDrag.y) * 0.003 * cameraSensitivity,
       -0.5,
@@ -1404,8 +1484,8 @@ function checkLootProximity() {
     }
   }
   worldState.nearBase = Boolean(worldState.homeBase && Math.hypot(player.x - worldState.homeBase.x, player.z - worldState.homeBase.z) < 7);
-  const bankX = worldState.homeBase?.x ?? 0;
-  const bankZ = (worldState.homeBase?.z ?? 0) + (worldState.homeBase?.side ?? 1) * 4.35;
+  const bankX = (worldState.homeBase?.x ?? 0) - (worldState.homeBase?.side ?? 1) * 4.05;
+  const bankZ = worldState.homeBase?.z ?? 0;
   worldState.nearBank = Math.hypot(player.x - bankX, player.z - bankZ) < 2.5;
   const canInteract = Boolean(worldState.closestLoot || (worldState.nearBase && player.carried.length) || worldState.nearBank);
   prompt.classList.toggle("is-visible", canInteract);
@@ -1579,6 +1659,18 @@ function updateIncome(delta) {
   for (const base of bases) {
     const income = base.slots.reduce((sum, slot) => sum + (slot.brainrot?.income ?? 0), 0);
     base.accrued += income * delta;
+    base.shieldTimeLeft -= delta;
+    if (base.shieldTimeLeft <= 0) base.shieldTimeLeft += 60;
+    const shieldSecond = Math.ceil(base.shieldTimeLeft);
+    if (shieldSecond !== base.lastShieldSecond) {
+      base.lastShieldSecond = shieldSecond;
+      const minutes = Math.floor(shieldSecond / 60);
+      const seconds = shieldSecond % 60;
+      updateTextSprite(
+        base.shieldDisplay,
+        `ESCUDO ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`,
+      );
+    }
   }
 }
 
@@ -1642,7 +1734,7 @@ function animateLoot(now, delta) {
     }
   }
   for (const base of bases) {
-    base.bank.material.color.set(base === worldState.homeBase && base.accrued >= 1 ? "#ffcd5e" : "#76c96f");
+    base.bank.material.emissiveIntensity = base === worldState.homeBase && base.accrued >= 1 ? 1 : 0.55;
   }
 }
 
@@ -1662,6 +1754,7 @@ function animateAvatar(now) {
 }
 
 function updateCamera(delta) {
+  cameraYaw += (cameraTargetYaw - cameraYaw) * (1 - Math.exp(-14 * delta));
   const distance = 6.4;
   const horizontalDistance = Math.cos(cameraPitch) * distance;
   const target = new THREE.Vector3(
@@ -1677,6 +1770,25 @@ function updateCamera(delta) {
     player.z - Math.cos(cameraYaw) * 1.4,
   );
   camera.lookAt(look);
+}
+
+function updateTextSprite(sprite, text) {
+  const labelCanvas = sprite.userData.canvas;
+  const context = labelCanvas.getContext("2d");
+  context.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+  context.fillStyle = sprite.userData.background;
+  context.beginPath();
+  context.roundRect(8, 8, 496, 128, 28);
+  context.fill();
+  context.strokeStyle = "rgba(255,255,255,.8)";
+  context.lineWidth = 6;
+  context.stroke();
+  context.fillStyle = sprite.userData.textColor;
+  context.font = `bold ${sprite.userData.fontSize}px Manrope, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text, 256, 72, 470);
+  sprite.userData.canvasTexture.needsUpdate = true;
 }
 
 function updateLabels() {

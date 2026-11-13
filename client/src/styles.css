@@ -58,6 +58,11 @@ button {
   height: 100%;
   display: block;
   touch-action: none;
+  cursor: grab;
+}
+
+#game-canvas:active {
+  cursor: grabbing;
 }
 
 .game-shell::after {
@@ -1192,5 +1197,11 @@ kbd {
 
   .controls-hint {
     display: none;
+  }
+}
+
+@media (pointer: fine) {
+  .mobile-controls {
+    display: none !important;
   }
 }
