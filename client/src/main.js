@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { GameAudio } from "./audio.js";
+import { BRAINROT_CATALOG, RARITIES } from "./brainrots.js";
 import "./styles.css";
 
 const GAME_SLUG = "robar-el-brainrot";
@@ -18,10 +19,9 @@ const audio = new GameAudio();
 const avatarLoader = new GLTFLoader();
 const accessoryLoader = new OBJLoader();
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
+renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
@@ -50,25 +50,37 @@ let adBreakActive = false;
 let gameplayReported = false;
 const sdkUnsubscribers = [];
 
-const hemiLight = new THREE.HemisphereLight("#e7faff", "#609356", 2.8);
-scene.add(hemiLight);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+scene.add(ambientLight);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+directionalLight.position.set(-24, 38, 18);
+scene.add(directionalLight);
 
-const moonLight = new THREE.DirectionalLight("#fff5d6", 3.5);
-moonLight.position.set(-24, 38, 18);
-moonLight.castShadow = true;
-moonLight.shadow.mapSize.set(2048, 2048);
-moonLight.shadow.camera.left = -55;
-moonLight.shadow.camera.right = 55;
-moonLight.shadow.camera.top = 55;
-moonLight.shadow.camera.bottom = -55;
-moonLight.shadow.camera.near = 0.5;
-moonLight.shadow.camera.far = 100;
-moonLight.shadow.bias = -0.0005;
-scene.add(moonLight);
+const geometryCache = new Map();
+const brainrotMaterialCache = new Map();
+const labelTextureCache = new Map();
+const sharedTextures = new WeakSet();
+const sharedGeometries = new WeakSet();
+const sharedMaterials = new WeakSet();
 
-const fillLight = new THREE.DirectionalLight("#a0c8ff", 0.6);
-fillLight.position.set(20, 15, -20);
-scene.add(fillLight);
+function getBoxGeometry(size) {
+  const key = size.join(",");
+  if (!geometryCache.has(key)) {
+    const geometry = new THREE.BoxGeometry(...size);
+    geometryCache.set(key, geometry);
+    sharedGeometries.add(geometry);
+  }
+  return geometryCache.get(key);
+}
+
+function getBrainrotMaterial(color) {
+  if (!brainrotMaterialCache.has(color)) {
+    const material = new THREE.MeshLambertMaterial({ color });
+    brainrotMaterialCache.set(color, material);
+    sharedMaterials.add(material);
+  }
+  return brainrotMaterialCache.get(color);
+}
 
 const platforms = [];
 const lootItems = [];
@@ -102,27 +114,6 @@ const worldState = {
   nearestBase: null,
   homeBase: null,
 };
-
-const RARITIES = [
-  { name: "Común", color: "#82d45b", chance: 0.42, price: 35, income: 2 },
-  { name: "Raro", color: "#58b9ff", chance: 0.28, price: 90, income: 6 },
-  { name: "Épico", color: "#b278ff", chance: 0.17, price: 240, income: 18 },
-  { name: "Legendario", color: "#ffad45", chance: 0.095, price: 650, income: 52 },
-  { name: "Mítico", color: "#ff668f", chance: 0.035, price: 1800, income: 150 },
-];
-
-const BRAINROT_CATALOG = [
-  { name: "Capibara Coco", shape: "capybara", color: "#c9925e" },
-  { name: "Pato Patatín", shape: "duck", color: "#ffd85c" },
-  { name: "Cactus Bailarín", shape: "cactus", color: "#64c66a" },
-  { name: "Gatito Ravioli", shape: "cat", color: "#ff9d80" },
-  { name: "Tortuga Tutti", shape: "turtle", color: "#55c8a0" },
-  { name: "Llama Limón", shape: "llama", color: "#f6ca75" },
-  { name: "Pollito Pop", shape: "chick", color: "#ffe978" },
-  { name: "Panda Mochi", shape: "panda", color: "#f3eee6" },
-  { name: "Conejo Churro", shape: "rabbit", color: "#efb4c6" },
-  { name: "Ajolote Arcoíris", shape: "axolotl", color: "#ff8fc4" },
-];
 
 const BASE_ZONES = [-27, -9, 9, 27];
 const BASE_COLORS = ["#ff8873", "#79c8ff", "#c89cff", "#ffd166", "#70d6a5", "#ff9ec2", "#a9c5ff", "#f7b267"];
@@ -265,10 +256,9 @@ function applyGraphicsQuality(value) {
     Medium: { pixelRatio: 1, shadows: true, fog: 0.011, far: 150 },
     High: { pixelRatio: 1.5, shadows: true, fog: 0.012, far: 180 },
     Ultra: { pixelRatio: 2, shadows: true, fog: 0.014, far: 220 },
-  }[value] ?? { pixelRatio: 1.5, shadows: true, fog: 0.012, far: 180 };
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelRatio));
-  renderer.shadowMap.enabled = quality.shadows;
-  moonLight.castShadow = quality.shadows;
+  }[value] ?? { pixelRatio: 1, shadows: false, fog: 0.012, far: 180 };
+  renderer.setPixelRatio(1);
+  renderer.shadowMap.enabled = false;
   scene.fog.density = quality.fog;
   camera.far = quality.far;
   camera.updateProjectionMatrix();
@@ -397,7 +387,7 @@ async function attachAvatarAccessory(root, equipped, slot, character = null) {
     if (texture) texture.colorSpace = THREE.SRGBColorSpace;
     object.traverse((child) => {
       if (!child.isMesh) return;
-      child.material = new THREE.MeshStandardMaterial({
+      child.material = new THREE.MeshLambertMaterial({
         map: texture,
         metalness: 0.05,
         roughness: 0.72,
@@ -526,7 +516,7 @@ function resetPlayerToSpawn() {
 function createLegacyWorld() {
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(200, 200),
-    new THREE.MeshStandardMaterial({ color: "#12192d", roughness: 0.93, metalness: 0.04 }),
+    new THREE.MeshLambertMaterial({ color: "#12192d", roughness: 0.93, metalness: 0.04 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -4;
@@ -544,7 +534,7 @@ function createLegacyWorld() {
     const edgeColor = spec.kind === "vault" ? "#ffcc70" : "#5df4d5";
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(spec.width, 0.8, spec.depth),
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshLambertMaterial({
         color,
         roughness: 0.5,
         metalness: 0.34,
@@ -566,7 +556,7 @@ function createLegacyWorld() {
 
     const top = new THREE.Mesh(
       new THREE.BoxGeometry(spec.width - 0.26, 0.06, spec.depth - 0.26),
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshLambertMaterial({
         color: spec.kind === "vault" ? "#594252" : "#233247",
         roughness: 0.72,
         metalness: 0.18,
@@ -593,7 +583,7 @@ function createLegacyWorld() {
 }
 
 function addPlatformDetails(spec, color) {
-  const cornerMaterial = new THREE.MeshStandardMaterial({
+  const cornerMaterial = new THREE.MeshLambertMaterial({
     color,
     emissive: color,
     emissiveIntensity: 0.8,
@@ -618,7 +608,7 @@ function addPlatformDetails(spec, color) {
 function createBaseMarker() {
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(2.4, 0.06, 8, 64),
-    new THREE.MeshStandardMaterial({ color: "#54f3d0", emissive: "#26d6bb", emissiveIntensity: 1.8 }),
+    new THREE.MeshLambertMaterial({ color: "#54f3d0", emissive: "#26d6bb", emissiveIntensity: 1.8 }),
   );
   ring.rotation.x = Math.PI / 2;
   ring.position.set(0, 0.1, 0);
@@ -626,14 +616,14 @@ function createBaseMarker() {
 
   const beacon = new THREE.Mesh(
     new THREE.CylinderGeometry(0.12, 0.28, 2.1, 12),
-    new THREE.MeshStandardMaterial({ color: "#72ffe0", emissive: "#54f3d0", emissiveIntensity: 1.2, transparent: true, opacity: 0.24 }),
+    new THREE.MeshLambertMaterial({ color: "#72ffe0", emissive: "#54f3d0", emissiveIntensity: 1.2, transparent: true, opacity: 0.24 }),
   );
   beacon.position.set(-3.8, 1.15, -3.8);
   scene.add(beacon);
 }
 
 function createVaultArch() {
-  const archMaterial = new THREE.MeshStandardMaterial({
+  const archMaterial = new THREE.MeshLambertMaterial({
     color: "#e5a8ff",
     emissive: "#9b55e3",
     emissiveIntensity: 1.3,
@@ -685,7 +675,7 @@ function createLoot() {
 function createCollectible(spec) {
   const group = new THREE.Group();
   const color = new THREE.Color(spec.color);
-  const bodyMaterial = new THREE.MeshStandardMaterial({
+  const bodyMaterial = new THREE.MeshLambertMaterial({
     color,
     roughness: 0.34,
     metalness: 0.08,
@@ -707,8 +697,8 @@ function createCollectible(spec) {
   body.castShadow = true;
   group.add(body);
 
-  const eyeMaterial = new THREE.MeshStandardMaterial({ color: "#fff8ef", roughness: 0.2 });
-  const pupilMaterial = new THREE.MeshStandardMaterial({ color: "#171626", roughness: 0.18 });
+  const eyeMaterial = new THREE.MeshLambertMaterial({ color: "#fff8ef", roughness: 0.2 });
+  const pupilMaterial = new THREE.MeshLambertMaterial({ color: "#171626", roughness: 0.18 });
   for (const side of [-1, 1]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), eyeMaterial);
     eye.position.set(side * 0.19, 0.34, 0.39);
@@ -729,13 +719,13 @@ function createCollectible(spec) {
 
   const antenna = new THREE.Mesh(
     new THREE.CylinderGeometry(0.025, 0.035, 0.35, 7),
-    new THREE.MeshStandardMaterial({ color: "#d8d8ff", metalness: 0.45, roughness: 0.3 }),
+    new THREE.MeshLambertMaterial({ color: "#d8d8ff", metalness: 0.45, roughness: 0.3 }),
   );
   antenna.position.set(0, 0.77, 0);
   group.add(antenna);
   const tip = new THREE.Mesh(
     new THREE.SphereGeometry(0.09, 12, 10),
-    new THREE.MeshStandardMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 1.7 }),
+    new THREE.MeshLambertMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 1.7 }),
   );
   tip.position.set(0, 0.97, 0);
   group.add(tip);
@@ -748,17 +738,14 @@ function createCollectible(spec) {
   halo.position.y = -0.22;
   group.add(halo);
 
-  const light = new THREE.PointLight(spec.color, 5, 5, 2);
-  light.position.y = 0.25;
-  group.add(light);
   return group;
 }
 
 function createAvatar() {
   const group = new THREE.Group();
-  const suitMaterial = new THREE.MeshStandardMaterial({ color: "#59b879", roughness: 0.78 });
-  const skinMaterial = new THREE.MeshStandardMaterial({ color: "#f1d8c6", roughness: 0.85 });
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: "#382e39", roughness: 0.7 });
+  const suitMaterial = new THREE.MeshLambertMaterial({ color: "#59b879", roughness: 0.78 });
+  const skinMaterial = new THREE.MeshLambertMaterial({ color: "#f1d8c6", roughness: 0.85 });
+  const darkMaterial = new THREE.MeshLambertMaterial({ color: "#382e39", roughness: 0.7 });
   const makePart = (size, position, material) => {
     const part = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
     part.position.set(...position);
@@ -774,10 +761,10 @@ function createAvatar() {
     makePart([0.25, 0.58, 0.28], [side * 0.2, 0.27, 0], suitMaterial);
     makePart([0.32, 0.15, 0.39], [side * 0.2, 0.045, 0.05], darkMaterial);
   }
-  makePart([0.3, 0.2, 0.1], [0, 1.38, 0.32], new THREE.MeshStandardMaterial({ color: "#f2ae54" }));
-  makePart([0.82, 0.15, 0.72], [0, 2.02, 0], new THREE.MeshStandardMaterial({ color: "#f2ae54" }));
+  makePart([0.3, 0.2, 0.1], [0, 1.38, 0.32], new THREE.MeshLambertMaterial({ color: "#f2ae54" }));
+  makePart([0.82, 0.15, 0.72], [0, 2.02, 0], new THREE.MeshLambertMaterial({ color: "#f2ae54" }));
   for (const side of [-1, 1]) {
-    makePart([0.13, 0.15, 0.17], [side * 0.22, 2.1, 0], new THREE.MeshStandardMaterial({ color: "#fff1bd" }));
+    makePart([0.13, 0.15, 0.17], [side * 0.22, 2.1, 0], new THREE.MeshLambertMaterial({ color: "#fff1bd" }));
   }
 
   return group;
@@ -804,7 +791,7 @@ function createStars() {
 async function createWorld() {
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(140, 140),
-    new THREE.MeshStandardMaterial({ color: "#7acb5e", roughness: 1 }),
+    new THREE.MeshLambertMaterial({ color: "#7acb5e", roughness: 1 }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
@@ -820,7 +807,7 @@ async function createWorld() {
   for (let ci = 0; ci < 6; ci += 1) {
     const cloud = new THREE.Mesh(
       new THREE.SphereGeometry(2 + Math.random() * 1.5, 8, 6),
-      new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 1, transparent: true, opacity: 0.75 }),
+      new THREE.MeshLambertMaterial({ color: "#ffffff", roughness: 1, transparent: true, opacity: 0.75 }),
     );
     cloud.position.set(THREE.MathUtils.randFloatSpread(80), 18 + Math.random() * 8, THREE.MathUtils.randFloatSpread(80));
     cloud.scale.set(1 + Math.random(), 0.5, 1 + Math.random());
@@ -830,7 +817,7 @@ async function createWorld() {
   for (let bi = 0; bi < 12; bi += 1) {
     const bush = new THREE.Mesh(
       new THREE.DodecahedronGeometry(0.4 + Math.random() * 0.3, 0),
-      new THREE.MeshStandardMaterial({ color: "#5aa84a", roughness: 0.95 }),
+      new THREE.MeshLambertMaterial({ color: "#5aa84a", roughness: 0.95 }),
     );
     const angle = (bi / 12) * Math.PI * 2;
     const r = 38 + Math.random() * 8;
@@ -842,7 +829,7 @@ async function createWorld() {
   const lane = new THREE.Group();
   const belt = new THREE.Mesh(
     new THREE.BoxGeometry(5.2, 0.24, 86),
-    new THREE.MeshStandardMaterial({ color: "#c47a44", roughness: 0.72, metalness: 0.12 }),
+    new THREE.MeshLambertMaterial({ color: "#c47a44", roughness: 0.72, metalness: 0.12 }),
   );
   belt.position.y = 0.12;
   belt.receiveShadow = true;
@@ -850,13 +837,13 @@ async function createWorld() {
   lane.add(belt);
   const beltTop = new THREE.Mesh(
     new THREE.BoxGeometry(4.65, 0.08, 85.7),
-    new THREE.MeshStandardMaterial({ color: "#e8b56e", roughness: 0.55, metalness: 0.06 }),
+    new THREE.MeshLambertMaterial({ color: "#e8b56e", roughness: 0.55, metalness: 0.06 }),
   );
   beltTop.position.y = 0.28;
   beltTop.receiveShadow = true;
   lane.add(beltTop);
   for (const x of [-2.7, 2.7]) {
-    const railMat = new THREE.MeshStandardMaterial({
+    const railMat = new THREE.MeshLambertMaterial({
       color: "#fff2c7",
       emissive: "#ffd97a",
       emissiveIntensity: 0.35,
@@ -877,7 +864,7 @@ async function createWorld() {
   for (let index = 0; index < 18; index += 1) {
     const stripe = new THREE.Mesh(
       new THREE.BoxGeometry(3.6, 0.03, 1.4),
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshLambertMaterial({
         color: "#fff7e2",
         emissive: "#fff0c0",
         emissiveIntensity: 0.22,
@@ -892,7 +879,7 @@ async function createWorld() {
     for (let zi = 0; zi < 12; zi += 1) {
       const stud = new THREE.Mesh(
         new THREE.CylinderGeometry(0.12, 0.12, 0.06, 8),
-        new THREE.MeshStandardMaterial({ color: "#a86a3c", roughness: 0.7, metalness: 0.1 }),
+        new THREE.MeshLambertMaterial({ color: "#a86a3c", roughness: 0.7, metalness: 0.1 }),
       );
       stud.position.set(x, 0.33, -38 + zi * 7);
       stud.castShadow = true;
@@ -904,7 +891,7 @@ async function createWorld() {
   worldState.lane = lane;
 
   const gateFrame = new THREE.Group();
-  const gateMat = new THREE.MeshStandardMaterial({
+  const gateMat = new THREE.MeshLambertMaterial({
     color: "#d4a060",
     emissive: "#ff9e3c",
     emissiveIntensity: 0.3,
@@ -922,9 +909,6 @@ async function createWorld() {
     beam.position.set(0, 3.2, z);
     beam.castShadow = true;
     gateFrame.add(beam);
-    const gateLight = new THREE.PointLight("#ffb84d", 4, 12, 2);
-    gateLight.position.set(0, 2.8, z);
-    gateFrame.add(gateLight);
   }
   scene.add(gateFrame);
 
@@ -969,14 +953,14 @@ function nextFrame() {
 function createTree(x, z, blossomColor) {
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.3, 0.46, 2.6, 7),
-    new THREE.MeshStandardMaterial({ color: "#9b6946", roughness: 1 }),
+    new THREE.MeshLambertMaterial({ color: "#9b6946", roughness: 1 }),
   );
   trunk.position.set(x, 1.3, z);
   trunk.castShadow = true;
   scene.add(trunk);
   const crown = new THREE.Mesh(
     new THREE.SphereGeometry(1.7, 10, 8),
-    new THREE.MeshStandardMaterial({ color: blossomColor, roughness: 0.92 }),
+    new THREE.MeshLambertMaterial({ color: blossomColor, roughness: 0.92 }),
   );
   crown.position.set(x, 3.1, z);
   crown.scale.set(1, 0.85, 1);
@@ -991,7 +975,7 @@ function createBase(spec) {
 
   const foundation = new THREE.Mesh(
     new THREE.BoxGeometry(12, 0.42, 13),
-    new THREE.MeshStandardMaterial({ color: "#e0b878", roughness: 0.85 }),
+    new THREE.MeshLambertMaterial({ color: "#e0b878", roughness: 0.85 }),
   );
   foundation.position.y = 0.05;
   foundation.castShadow = true;
@@ -999,13 +983,13 @@ function createBase(spec) {
   group.add(foundation);
   const floor = new THREE.Mesh(
     new THREE.BoxGeometry(11.4, 0.12, 12.4),
-    new THREE.MeshStandardMaterial({ color: "#fff4d8", roughness: 0.9 }),
+    new THREE.MeshLambertMaterial({ color: "#fff4d8", roughness: 0.9 }),
   );
   floor.position.y = 0.31;
   floor.receiveShadow = true;
   group.add(floor);
 
-  const tileMat = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.62, metalness: 0.06 });
+  const tileMat = new THREE.MeshLambertMaterial({ color: spec.color, roughness: 0.62, metalness: 0.06 });
   for (let ti = 0; ti < 4; ti += 1) {
     const tile = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.04, 5.2), tileMat);
     tile.position.set(ti % 2 === 0 ? -2.8 : 2.8, 0.38, ti < 2 ? -2.8 : 2.8);
@@ -1013,7 +997,7 @@ function createBase(spec) {
     group.add(tile);
   }
 
-  const columnMaterial = new THREE.MeshStandardMaterial({ color: "#fffaf0", roughness: 0.72 });
+  const columnMaterial = new THREE.MeshLambertMaterial({ color: "#fffaf0", roughness: 0.72 });
   for (const x of [-5.35, 5.35]) {
     for (const z of [-5.85, 5.85]) {
       const column = new THREE.Mesh(new THREE.BoxGeometry(0.48, 4.35, 0.48), columnMaterial);
@@ -1022,13 +1006,13 @@ function createBase(spec) {
       group.add(column);
       const footing = new THREE.Mesh(
         new THREE.BoxGeometry(0.72, 0.22, 0.72),
-        new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.6 }),
+        new THREE.MeshLambertMaterial({ color: spec.color, roughness: 0.6 }),
       );
       footing.position.set(x, 0.53, z);
       group.add(footing);
       const cap = new THREE.Mesh(
         new THREE.BoxGeometry(0.58, 0.12, 0.58),
-        new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.55, metalness: 0.1 }),
+        new THREE.MeshLambertMaterial({ color: spec.color, roughness: 0.55, metalness: 0.1 }),
       );
       cap.position.set(x, 4.72, z);
       group.add(cap);
@@ -1037,14 +1021,14 @@ function createBase(spec) {
 
   const roof = new THREE.Mesh(
     new THREE.BoxGeometry(12.4, 0.48, 13.4),
-    new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.74 }),
+    new THREE.MeshLambertMaterial({ color: spec.color, roughness: 0.74 }),
   );
   roof.position.y = 4.9;
   roof.castShadow = true;
   group.add(roof);
   const roofTrim = new THREE.Mesh(
     new THREE.BoxGeometry(12.1, 0.15, 13.1),
-    new THREE.MeshStandardMaterial({ color: "#fff0c7", roughness: 0.65 }),
+    new THREE.MeshLambertMaterial({ color: "#fff0c7", roughness: 0.65 }),
   );
   roofTrim.position.y = 4.58;
   group.add(roofTrim);
@@ -1061,8 +1045,8 @@ function createBase(spec) {
   group.add(sign);
 
   const slots = [];
-  const pedestalMaterial = new THREE.MeshStandardMaterial({ color: "#e0b878", roughness: 0.5, metalness: 0.18 });
-  const pedestalGlowMaterial = new THREE.MeshStandardMaterial({
+  const pedestalMaterial = new THREE.MeshLambertMaterial({ color: "#e0b878", roughness: 0.5, metalness: 0.18 });
+  const pedestalGlowMaterial = new THREE.MeshLambertMaterial({
     color: "#bbffe0",
     emissive: "#56ffae",
     emissiveIntensity: 0.85,
@@ -1083,7 +1067,7 @@ function createBase(spec) {
       group.add(pedestal);
       const pedestalRing = new THREE.Mesh(
         new THREE.TorusGeometry(0.82, 0.05, 8, 32),
-        new THREE.MeshStandardMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 0.6, metalness: 0.3, roughness: 0.3 }),
+        new THREE.MeshLambertMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 0.6, metalness: 0.3, roughness: 0.3 }),
       );
       pedestalRing.rotation.x = Math.PI / 2;
       pedestalRing.position.set(x, 0.72, z);
@@ -1107,16 +1091,13 @@ function createBase(spec) {
       );
       beam.position.set(x, 2.0, z);
       group.add(beam);
-      const slotLight = new THREE.PointLight("#56ffae", 1.5, 4, 2);
-      slotLight.position.set(x, 1.0, z);
-      group.add(slotLight);
       slots.push({ x: spec.x + x, y: 1.0, z: spec.z + z, brainrot: null, model: null });
     }
   }
 
   const bank = new THREE.Mesh(
     new THREE.BoxGeometry(2.6, 0.2, 2.2),
-    new THREE.MeshStandardMaterial({
+    new THREE.MeshLambertMaterial({
       color: "#3eff7a",
       emissive: "#15d84e",
       emissiveIntensity: 0.65,
@@ -1144,12 +1125,8 @@ function createBase(spec) {
   bankSign.position.set(-spec.side * 4.05, 1.3, 0);
   bankSign.scale.set(1.4, 0.5, 1);
   group.add(bankSign);
-  const bankLight = new THREE.PointLight("#3eff7a", 2.5, 6, 2);
-  bankLight.position.set(-spec.side * 4.05, 0.8, 0);
-  group.add(bankLight);
-
   const barrier = new THREE.Group();
-  const postMaterial = new THREE.MeshStandardMaterial({ color: "#3a4250", metalness: 0.72, roughness: 0.28 });
+  const postMaterial = new THREE.MeshLambertMaterial({ color: "#3a4250", metalness: 0.72, roughness: 0.28 });
   for (const z of [-4.25, 4.25]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 2.7, 12), postMaterial);
     post.position.set(-spec.side * 5.1, 1.65, z);
@@ -1157,12 +1134,12 @@ function createBase(spec) {
     barrier.add(post);
     const postCap = new THREE.Mesh(
       new THREE.SphereGeometry(0.16, 12, 10),
-      new THREE.MeshStandardMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 0.8 }),
+      new THREE.MeshLambertMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: 0.8 }),
     );
     postCap.position.set(-spec.side * 5.1, 3.0, z);
     barrier.add(postCap);
   }
-  const laserMaterial = new THREE.MeshStandardMaterial({
+  const laserMaterial = new THREE.MeshLambertMaterial({
     color: "#ff5876",
     emissive: "#ff174d",
     emissiveIntensity: 2.5,
@@ -1250,6 +1227,42 @@ function createTextSprite(text, textColor = "#fff", background = "#785c47", font
   return sprite;
 }
 
+function createBrainrotLabel(spec) {
+  const key = `${spec.name}|${spec.rarity}|${spec.income}|${spec.price}`;
+  let texture = labelTextureCache.get(key);
+  if (!texture) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 768;
+    canvas.height = 192;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "rgba(16, 24, 38, .96)";
+    context.beginPath();
+    context.roundRect(8, 8, 752, 176, 24);
+    context.fill();
+    const rarity = RARITIES.find((entry) => entry.name === spec.rarity);
+    context.strokeStyle = spec.rarity === "Brainrot God" ? "#eab308" : rarity.color;
+    context.lineWidth = 7;
+    context.stroke();
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.font = "800 37px Manrope, sans-serif";
+    context.fillStyle = "#ffffff";
+    context.fillText(spec.name, 384, 45, 720);
+    context.font = "800 27px Manrope, sans-serif";
+    context.fillStyle = rarity.color;
+    context.fillText(`[${spec.rarity}]`, 170, 121, 300);
+    context.fillStyle = "#4ade80";
+    context.fillText(`+$${spec.income}/s`, 405, 121, 230);
+    context.fillStyle = "#facc15";
+    context.fillText(`$${spec.price}`, 620, 121, 210);
+    texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    labelTextureCache.set(key, texture);
+    sharedTextures.add(texture);
+  }
+  return new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+}
+
 async function populateConveyor() {
   for (let index = 0; index < 7; index += 1) {
     spawnConveyorBrainrot(-38 + index * 12);
@@ -1258,14 +1271,14 @@ async function populateConveyor() {
 }
 
 function spawnConveyorBrainrot(z = -42) {
-  const catalog = BRAINROT_CATALOG[Math.floor(Math.random() * BRAINROT_CATALOG.length)];
   const rarity = chooseRarity();
+  const candidates = BRAINROT_CATALOG.filter((entry) => entry.rarity === rarity.name);
+  const catalog = candidates[Math.floor(Math.random() * candidates.length)];
   const spec = {
     ...catalog,
-    ...rarity,
+    color: rarity.color,
     bodyColor: catalog.color,
-    value: rarity.price,
-    rarity: rarity.name,
+    value: catalog.price,
     x: (Math.random() - 0.5) * 0.65,
     z,
     y: 0.42,
@@ -1273,7 +1286,7 @@ function spawnConveyorBrainrot(z = -42) {
   const model = createBrainrotModel(spec);
   model.position.set(spec.x, spec.y, z);
   scene.add(model);
-  const sign = createTextSprite(`${spec.name} · ${spec.rarity} · $${spec.price} · $${spec.income}/s`, "#fffdf1", spec.color);
+  const sign = createBrainrotLabel(spec);
   sign.position.set(0, 2.8, 0);
   sign.scale.set(4.9, 1.38, 1);
   model.add(sign);
@@ -1304,12 +1317,14 @@ function chooseRarity() {
 function createBrainrotModel(spec) {
   const group = new THREE.Group();
   const bodyColor = spec.bodyColor ?? spec.color;
-  const bodyMaterial = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.75, metalness: 0.05 });
-  const accentMaterial = new THREE.MeshStandardMaterial({ color: "#fff1d2", roughness: 0.82 });
-  const darkMaterial = new THREE.MeshStandardMaterial({ color: "#2a2030", roughness: 0.65, metalness: 0.05 });
-  const trimMaterial = new THREE.MeshStandardMaterial({ color: "#f7c95f", roughness: 0.5, metalness: 0.12 });
+  const bodyMaterial = new THREE.MeshLambertMaterial({ color: bodyColor, roughness: 0.75, metalness: 0.05 });
+  const accentMaterial = new THREE.MeshLambertMaterial({ color: "#fff1d2", roughness: 0.82 });
+  const darkMaterial = new THREE.MeshLambertMaterial({ color: "#2a2030", roughness: 0.65, metalness: 0.05 });
+  const trimMaterial = new THREE.MeshLambertMaterial({ color: "#f7c95f", roughness: 0.5, metalness: 0.12 });
   const makeBlock = (parent, size, position, material, rotation = null) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+    const color = material.color?.getHexString();
+    const sharedMaterial = color ? getBrainrotMaterial(`#${color}`) : material;
+    const mesh = new THREE.Mesh(getBoxGeometry(size), sharedMaterial);
     mesh.position.set(...position);
     if (rotation) mesh.rotation.set(...rotation);
     mesh.castShadow = true;
@@ -1331,17 +1346,17 @@ function createBrainrotModel(spec) {
   makeBlock(head, [headWidth + 0.04, 0.08, 0.64], [0, 0.56, 0], accentMaterial);
 
   const eyeMaterial = spec.shape === "panda"
-    ? new THREE.MeshStandardMaterial({ color: "#1a1620", roughness: 0.6 })
+    ? new THREE.MeshLambertMaterial({ color: "#1a1620", roughness: 0.6 })
     : darkMaterial;
-  const eyeWhiteMaterial = new THREE.MeshStandardMaterial({ color: "#fff8f0", roughness: 0.25, metalness: 0.05 });
+  const eyeWhiteMaterial = new THREE.MeshLambertMaterial({ color: "#fff8f0", roughness: 0.25, metalness: 0.05 });
   for (const side of [-1, 1]) {
     const eyeX = side * headWidth * 0.25;
     makeBlock(head, [0.2, 0.22, 0.08], [eyeX, 0.28, 0.34], eyeWhiteMaterial);
     makeBlock(head, [0.08, 0.13, 0.04], [eyeX, 0.28, 0.40], eyeMaterial);
-    makeBlock(head, [0.14, 0.07, 0.045], [side * 0.24, 0.02, 0.34], new THREE.MeshStandardMaterial({ color: "#f29b91", roughness: 0.7 }));
+    makeBlock(head, [0.14, 0.07, 0.045], [side * 0.24, 0.02, 0.34], new THREE.MeshLambertMaterial({ color: "#f29b91", roughness: 0.7 }));
   }
   makeBlock(head, [0.22, 0.06, 0.08], [0, -0.02, 0.35], darkMaterial);
-  makeBlock(head, [0.14, 0.03, 0.06], [0, -0.05, 0.37], new THREE.MeshStandardMaterial({ color: "#d97a8e", roughness: 0.6 }));
+  makeBlock(head, [0.14, 0.03, 0.06], [0, -0.05, 0.37], new THREE.MeshLambertMaterial({ color: "#d97a8e", roughness: 0.6 }));
 
   const arms = [];
   const legs = [];
@@ -1382,25 +1397,55 @@ function createBrainrotModel(spec) {
   if (spec.shape === "duck" || spec.shape === "chick") {
     makeBlock(head, [0.3, 0.15, 0.25], [0, 0.1, 0.43], trimMaterial);
   } else if (spec.shape === "capybara") {
-    makeBlock(head, [0.3, 0.2, 0.24], [0, 0.02, 0.4], new THREE.MeshStandardMaterial({ color: "#8b593f", roughness: 0.8 }));
+    makeBlock(head, [0.3, 0.2, 0.24], [0, 0.02, 0.4], new THREE.MeshLambertMaterial({ color: "#8b593f", roughness: 0.8 }));
   } else if (spec.shape === "turtle") {
-    makeBlock(group, [0.88, 0.54, 0.42], [0, 0.87, -0.42], new THREE.MeshStandardMaterial({ color: "#367f57", roughness: 0.95 }));
-    makeBlock(group, [0.82, 0.1, 0.38], [0, 1.12, -0.42], new THREE.MeshStandardMaterial({ color: "#4a9968", roughness: 0.85 }));
+    makeBlock(group, [0.88, 0.54, 0.42], [0, 0.87, -0.42], new THREE.MeshLambertMaterial({ color: "#367f57", roughness: 0.95 }));
+    makeBlock(group, [0.82, 0.1, 0.38], [0, 1.12, -0.42], new THREE.MeshLambertMaterial({ color: "#4a9968", roughness: 0.85 }));
   } else if (spec.shape === "cactus") {
     for (const side of [-1, 1]) {
       makeBlock(head, [0.045, 0.12, 0.045], [side * 0.24, 0.05, 0.33], accentMaterial);
     }
   }
 
+  const featureColor = getBrainrotMaterial(spec.color);
+  if (spec.shape === "noob") {
+    makeBlock(head, [0.82, 0.16, 0.68], [0, 0.62, 0], getBrainrotMaterial("#2778e8"));
+    makeBlock(head, [0.22, 0.26, 0.2], [0.28, 0.2, 0.37], featureColor);
+    makeBlock(head, [0.22, 0.26, 0.2], [-0.28, 0.2, 0.37], featureColor);
+    makeBlock(head, [0.35, 0.12, 0.28], [0, -0.1, 0.52], getBrainrotMaterial("#facc15"));
+  } else if (spec.shape === "flower") {
+    for (let petal = 0; petal < 5; petal += 1) {
+      const angle = (petal / 5) * Math.PI * 2;
+      makeBlock(head, [0.16, 0.16, 0.16], [Math.cos(angle) * 0.25, 0.65 + Math.sin(angle) * 0.25, 0], getBrainrotMaterial("#f472b6"));
+    }
+    makeBlock(head, [0.18, 0.18, 0.18], [0, 0.65, 0], getBrainrotMaterial("#facc15"));
+  } else if (spec.shape === "wood") {
+    makeBlock(group, [0.5, 0.3, 0.24], [0, 1.15, 0.38], getBrainrotMaterial("#76502f"));
+    makeBlock(group, [0.16, 0.66, 0.16], [0.68, 0.8, 0], getBrainrotMaterial("#7c5435"));
+  } else if (spec.shape === "coffee") {
+    makeBlock(head, [0.72, 0.16, 0.66], [0, 0.62, 0], getBrainrotMaterial("#faf5e9"));
+    makeBlock(head, [0.12, 0.54, 0.12], [0.46, 0.18, 0], darkMaterial);
+  } else if (spec.shape === "shark") {
+    makeBlock(group, [0.18, 0.32, 0.2], [0, 1.87, -0.05], featureColor);
+    makeBlock(head, [0.6, 0.14, 0.24], [0, 0.02, 0.42], getBrainrotMaterial("#f4f4f5"));
+  } else if (spec.shape === "pineapple") {
+    for (let leaf = -1; leaf <= 1; leaf += 1) {
+      makeBlock(head, [0.12, 0.34, 0.12], [leaf * 0.18, 0.77, 0], getBrainrotMaterial("#38a34a"), [0, 0, leaf * -0.3]);
+    }
+  } else if (spec.shape === "fridge") {
+    makeBlock(group, [0.92, 0.92, 0.22], [0, 0.84, -0.37], getBrainrotMaterial("#d9e0e6"));
+    makeBlock(group, [0.06, 0.26, 0.08], [0.3, 0.86, -0.22], darkMaterial);
+  }
+
   if (["Raro", "Épico", "Legendario", "Mítico"].includes(spec.rarity)) {
-    const glassesMaterial = new THREE.MeshStandardMaterial({ color: "#3a4a66", metalness: 0.4, roughness: 0.25 });
+    const glassesMaterial = new THREE.MeshLambertMaterial({ color: "#3a4a66", metalness: 0.4, roughness: 0.25 });
     makeBlock(head, [0.3, 0.12, 0.08], [-0.18, 0.29, 0.42], glassesMaterial);
     makeBlock(head, [0.3, 0.12, 0.08], [0.18, 0.29, 0.42], glassesMaterial);
     makeBlock(head, [0.16, 0.05, 0.07], [0, 0.29, 0.42], glassesMaterial);
   }
 
   if (["Épico", "Mítico"].includes(spec.rarity)) {
-    const wingMaterial = new THREE.MeshStandardMaterial({
+    const wingMaterial = new THREE.MeshLambertMaterial({
       color: spec.rarity === "Mítico" ? "#f8a6e2" : "#f4f1ff",
       roughness: 0.68,
       emissive: spec.rarity === "Mítico" ? "#c466b0" : "#a0a0cc",
@@ -1427,7 +1472,7 @@ function createBrainrotModel(spec) {
   }
 
   if (spec.rarity === "Mítico") {
-    const haloMaterial = new THREE.MeshStandardMaterial({
+    const haloMaterial = new THREE.MeshLambertMaterial({
       color: "#ffd86b",
       emissive: "#c78028",
       emissiveIntensity: 0.5,
@@ -1438,9 +1483,7 @@ function createBrainrotModel(spec) {
       const angle = (segment / 8) * Math.PI * 2;
       makeBlock(head, [0.15, 0.13, 0.16], [Math.cos(angle) * 0.56, 1.02, Math.sin(angle) * 0.56], haloMaterial);
     }
-    const aura = new THREE.PointLight("#ffd86b", 2, 4, 2);
-    aura.position.set(0, 1.5, 0);
-    group.add(aura);
+
   }
 
   const rarityColor = new THREE.Color(spec.color);
@@ -1800,12 +1843,12 @@ function syncCarriedModels() {
 
 function disposeObject(object) {
   object.traverse((child) => {
-    child.geometry?.dispose();
+    if (child.geometry && !sharedGeometries.has(child.geometry)) child.geometry.dispose();
     if (!child.material) return;
     const materials = Array.isArray(child.material) ? child.material : [child.material];
     for (const material of materials) {
-      material.map?.dispose();
-      material.dispose();
+      if (material.map && !sharedTextures.has(material.map)) material.map.dispose();
+      if (!sharedMaterials.has(material)) material.dispose();
     }
   });
 }
